@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "SkatePod",
+    "slug": "skatepod",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#173d52"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hnguyen1309.skatepod"
+    },
+    "android": {
+      "package": "com.hnguyen1309.skatepod",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#173d52"
+      }
+    }
+  }
+}

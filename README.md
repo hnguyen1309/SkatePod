@@ -32,11 +32,23 @@ Skating away from endless juggling of details, so coaches can be on the ice teac
 
 | Folder | What it is |
 | --- | --- |
-| [`prototype/figma-make/`](prototype/figma-make/) | Web prototype exported from Figma Make (React + Vite + Tailwind). A visual reference, not the final app. |
+| [`mobile/`](mobile/) | **The iPhone app** (Expo, React Native + TypeScript). Android-ready later. |
+| [`prototype/figma-make/`](prototype/figma-make/) | Original web prototype from Figma Make (React + Vite + Tailwind). Kept as a design reference. |
 
-Coming next: an iPhone-first app built with Expo (React Native + TypeScript), with Android support later.
+## Run the iPhone app
 
-## Run the prototype
+Install Expo Go on your iPhone, then on your Mac:
+
+```bash
+cd mobile
+sh setup.sh        # one-time install
+npx expo login     # same account as Expo Go
+npx expo start     # scan the QR code with your iPhone
+```
+
+Full steps are in [`mobile/README.md`](mobile/README.md). All students and notes are made-up sample data, stored on the phone only.
+
+## Run the web prototype
 
 ```bash
 cd prototype/figma-make
@@ -44,15 +56,15 @@ npm install
 npm run dev
 ```
 
-Then open the local link it prints (usually http://localhost:5173). Data is stored in your browser only, and all students and notes are made-up sample data.
-
 ## Roadmap
 
 - [x] Customer discovery survey for coaches
 - [x] Competitive analysis and product strategy
 - [x] Paper sketches and Figma Make prototype
 - [ ] Review survey results and talk with coaches
-- [ ] Build v0 in Expo (student list, notes, checklist, links)
+- [x] Port the Figma Make prototype to an Expo iPhone app
+- [ ] Try it on a real iPhone and fix what feels off
+- [ ] Trim to the coach MVP based on survey results
 - [ ] Test with home-rink coaches via TestFlight
 - [ ] Add backend and share links
 - [ ] Launch (free) on the App Store

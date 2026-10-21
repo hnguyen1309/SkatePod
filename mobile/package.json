@@ -1,0 +1,14 @@
+{
+  "name": "skatepod",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "setup": "sh ./setup.sh",
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
