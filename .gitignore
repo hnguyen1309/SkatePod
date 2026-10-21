@@ -60,3 +60,12 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+## Node / Expo / web prototype
+node_modules/
+dist/
+.expo/
+.env
+.env.*
+*.log
+.DS_Store
