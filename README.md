@@ -53,11 +53,11 @@ Full steps are in [`mobile/README.md`](mobile/README.md). All students and notes
 
 ```bash
 cd backend
-docker compose up -d   # PostgreSQL
-./gradlew bootRun      # API on http://localhost:8080
+docker compose up -d     # PostgreSQL
+./mvnw spring-boot:run   # API on http://localhost:8080
 ```
 
-Details in [`backend/README.md`](backend/README.md).
+First time? See the one-time Maven setup in [`backend/README.md`](backend/README.md).
 
 ## Run the web prototype
 

@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  * so that I always see accurate schedule info without updating it twice."
  *
  * 👋 Han, this one is yours to build! The tests in NextLessonCalculatorTest describe what it
- * should do. Remove the @Disabled line there, run ./gradlew test, and make them pass.
+ * should do. Remove the @Disabled line there, run ./mvnw test, and make them pass.
  *
  * Rules (from the acceptance criteria):
  *  - Lessons repeat every week (each has a dayOfWeek and startTime).

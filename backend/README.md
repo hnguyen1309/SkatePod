@@ -2,19 +2,29 @@
 
 REST API for the SkatePod app: students and their weekly lessons, stored in PostgreSQL.
 
-**Stack:** Java 21 · Spring Boot 4.1 · Spring Data JPA · Bean Validation · Flyway · PostgreSQL 17 · Gradle
+**Stack:** Java 21 · Spring Boot 4.1 · Spring Data JPA · Bean Validation · Flyway · PostgreSQL 17 · Maven
 
-## Run it locally (Mac)
+## One-time setup (Mac)
 
-You need **Docker Desktop** (for the database). Java 21 is downloaded automatically by Gradle if you don't have it.
+You need **Java 21**, **Maven** and **Docker Desktop**:
+
+```bash
+brew install openjdk@21 maven      # skip what you already have; check with: java -version
+cd backend
+mvn wrapper:wrapper                # creates ./mvnw so everyone uses the same Maven version
+```
+
+Commit the new `mvnw`, `mvnw.cmd` and `.mvn/` files so the wrapper is in the repo.
+
+## Run it locally
 
 ```bash
 cd backend
 docker compose up -d      # start PostgreSQL
-./gradlew bootRun         # start the API on http://localhost:8080
+./mvnw spring-boot:run    # start the API on http://localhost:8080
 ```
 
-`bootRun` uses the **dev** profile, which loads made-up sample students and lessons. Try it:
+`spring-boot:run` uses the **dev** profile, which loads made-up sample students and lessons. Try it:
 
 ```bash
 curl http://localhost:8080/api/students
@@ -25,7 +35,7 @@ Or open `requests.http` in VS Code (REST Client extension) or IntelliJ and click
 Run the tests:
 
 ```bash
-./gradlew test
+./mvnw test
 ```
 
 Stop the database with `docker compose down` (add `-v` to wipe its data).
@@ -71,7 +81,7 @@ src/main/resources/
 > As an instructor, I want each student's next lesson to come from my calendar, so that I always see accurate schedule info without updating it twice.
 
 1. Open `src/test/java/.../student/NextLessonCalculatorTest.java` and delete the `@Disabled` line.
-2. Run `./gradlew test` and watch 5 of its 6 tests fail (red). The "no lessons" one already passes.
+2. Run `./mvnw test` and watch 5 of its 6 tests fail (red). The "no lessons" one already passes.
 3. Implement `NextLessonCalculator.findNext()` until they all pass (green).
 4. Run the app and `GET /api/students`: each student's `nextLesson` is now filled in.
 

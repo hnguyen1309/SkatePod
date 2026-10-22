@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * 👋 Han: these tests are the acceptance criteria for feature #2.
- * Delete the @Disabled line below, run ./gradlew test, and make them all pass
+ * Delete the @Disabled line below, run ./mvnw test, and make them all pass
  * by implementing NextLessonCalculator.findNext().
  */
 @Disabled("Han: remove this line when you start building feature #2")
