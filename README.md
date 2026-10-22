@@ -33,6 +33,7 @@ Skating away from endless juggling of details, so coaches can be on the ice teac
 | Folder | What it is |
 | --- | --- |
 | [`mobile/`](mobile/) | **The iPhone app** (Expo, React Native + TypeScript). Android-ready later. |
+| [`backend/`](backend/) | **REST API** (Spring Boot 4 + PostgreSQL): students and lessons with DTOs, validation and Flyway migrations. |
 | [`prototype/figma-make/`](prototype/figma-make/) | Original web prototype from Figma Make (React + Vite + Tailwind). Kept as a design reference. |
 
 ## Run the iPhone app
@@ -47,6 +48,16 @@ npx expo start     # scan the QR code with your iPhone
 ```
 
 Full steps are in [`mobile/README.md`](mobile/README.md). All students and notes are made-up sample data, stored on the phone only.
+
+## Run the backend
+
+```bash
+cd backend
+docker compose up -d   # PostgreSQL
+./gradlew bootRun      # API on http://localhost:8080
+```
+
+Details in [`backend/README.md`](backend/README.md).
 
 ## Run the web prototype
 
@@ -66,7 +77,9 @@ npm run dev
 - [ ] Try it on a real iPhone and fix what feels off
 - [ ] Trim to the coach MVP based on survey results
 - [ ] Test with home-rink coaches via TestFlight
-- [ ] Add backend and share links
+- [x] Backend scaffold: Spring Boot + PostgreSQL (students, lessons)
+- [ ] Feature #2: next lesson from the calendar
+- [ ] Connect the app to the backend, then add share links
 - [ ] Launch (free) on the App Store
 
 ## Privacy

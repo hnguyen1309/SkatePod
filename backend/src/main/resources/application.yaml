@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: skatepod-api
+  datasource:
+    # Defaults match compose.yaml. Override with env vars when deploying.
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/skatepod}
+    username: ${DATABASE_USERNAME:skatepod}
+    password: ${DATABASE_PASSWORD:skatepod}
+  jpa:
+    # Flyway owns the schema; Hibernate only checks that entities match it.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    locations: classpath:db/migration
+  mvc:
+    # Errors come back as standard JSON "problem details".
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${PORT:8080}

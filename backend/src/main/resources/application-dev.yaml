@@ -1,0 +1,10 @@
+# Dev profile: also loads made-up sample students and lessons.
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/sample
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.skatepod: DEBUG

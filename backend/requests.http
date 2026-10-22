@@ -1,0 +1,71 @@
+### SkatePod API sample requests
+### Open in VS Code with the "REST Client" extension (or IntelliJ) and click "Send Request".
+### The IDs below come from the dev sample data.
+
+@baseUrl = http://localhost:8080/api
+
+### List all students (with each one's next lesson)
+GET {{baseUrl}}/students
+
+### Get one student (Emma)
+GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000001
+
+### Create a student
+POST {{baseUrl}}/students
+Content-Type: application/json
+
+{
+  "name": "Mai",
+  "level": "Adult Bronze",
+  "discipline": "Freestyle",
+  "focus": "Waltz jump",
+  "progress": 20
+}
+
+### Validation error example (blank name, progress over 100) → 400
+POST {{baseUrl}}/students
+Content-Type: application/json
+
+{
+  "name": "",
+  "level": "Preliminary",
+  "discipline": "Freestyle",
+  "progress": 150
+}
+
+### Update a student
+PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001
+Content-Type: application/json
+
+{
+  "name": "Emma Miller",
+  "level": "Gold",
+  "discipline": "Freestyle",
+  "focus": "Double flip",
+  "progress": 80
+}
+
+### List all lessons in week order
+GET {{baseUrl}}/lessons
+
+### List one student's lessons
+GET {{baseUrl}}/lessons?studentId=11111111-1111-1111-1111-000000000001
+
+### Schedule a lesson
+POST {{baseUrl}}/lessons
+Content-Type: application/json
+
+{
+  "studentId": "11111111-1111-1111-1111-000000000004",
+  "dayOfWeek": "FRIDAY",
+  "startTime": "16:30",
+  "durationMinutes": 45,
+  "type": "Freestyle",
+  "color": "TEAL"
+}
+
+### Not found example → 404
+GET {{baseUrl}}/students/00000000-0000-0000-0000-000000000000
+
+### Delete a lesson
+DELETE {{baseUrl}}/lessons/22222222-2222-2222-2222-000000000007
