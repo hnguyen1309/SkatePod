@@ -6,15 +6,26 @@ REST API for the SkatePod app: students and their weekly lessons, stored in Post
 
 ## One-time setup (Mac)
 
-You need **Java 21**, **Maven** and **Docker Desktop**:
+You need **Java 21**, **Maven** and **Docker Desktop**.
+
+1. Check that Homebrew matches your Mac. On Apple Silicon, `which brew` must print `/opt/homebrew/bin/brew`. If it prints `/usr/local/bin/brew`, that's the Intel version (often copied over from an old Mac), and it will try to compile everything from source. Install the native one from [brew.sh](https://brew.sh) and add `eval "$(/opt/homebrew/bin/brew shellenv)"` to `~/.zprofile`.
+2. Install the tools:
 
 ```bash
-brew install openjdk@21 maven      # skip what you already have; check with: java -version
-cd backend
-mvn wrapper:wrapper                # creates ./mvnw so everyone uses the same Maven version
+brew install openjdk@21 maven
+brew install --cask docker-desktop
 ```
 
-Commit the new `mvnw`, `mvnw.cmd` and `.mvn/` files so the wrapper is in the repo.
+3. Make Java 21 the default, since Maven otherwise uses the newest Java it finds. Add these lines to `~/.zprofile`, then open a new Terminal tab:
+
+```bash
+export JAVA_HOME="/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+4. Check: `java -version` and `mvn -version` should both say 21.
+5. Open **Docker Desktop** once and accept its setup screens. You don't need to install PostgreSQL: Docker runs it for you.
+6. If `./mvnw` isn't in `backend/` yet, create it with `mvn wrapper:wrapper`, then commit `mvnw`, `mvnw.cmd` and `.mvn/`.
 
 ## Run it locally
 
