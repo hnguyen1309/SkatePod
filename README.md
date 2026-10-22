@@ -36,28 +36,50 @@ Skating away from endless juggling of details, so coaches can be on the ice teac
 | [`backend/`](backend/) | **REST API** (Spring Boot 4 + PostgreSQL): students and lessons with DTOs, validation and Flyway migrations. |
 | [`prototype/figma-make/`](prototype/figma-make/) | Original web prototype from Figma Make (React + Vite + Tailwind). Kept as a design reference. |
 
-## Run the iPhone app
+## Run it locally
 
-Install Expo Go on your iPhone, then on your Mac:
+The app and the backend run separately, so use one Terminal tab for each. The app doesn't talk to the backend yet: it uses sample data stored on the phone.
+
+### One-time setup (Mac)
+
+Backend: Java 21, Maven and Docker Desktop. Steps are in [`backend/README.md`](backend/README.md#one-time-setup-mac).
+
+iPhone app: Node.js LTS, plus Expo Go on your iPhone:
 
 ```bash
 cd mobile
-sh setup.sh        # one-time install
+sh setup.sh        # installs Expo and matching packages
 npx expo login     # same account as Expo Go
-npx expo start     # scan the QR code with your iPhone
 ```
 
-Full steps are in [`mobile/README.md`](mobile/README.md). All students and notes are made-up sample data, stored on the phone only.
+### Every time
 
-## Run the backend
+**Tab 1: backend**
+
+1. Open **Docker Desktop** and wait until it says it's running.
+2. Start the database and the API:
 
 ```bash
 cd backend
-docker compose up -d     # PostgreSQL
-./mvnw spring-boot:run   # API on http://localhost:8080
+docker compose up -d       # start PostgreSQL
+./mvnw spring-boot:run     # API on http://localhost:8080/api
 ```
 
-First time? See the one-time Maven setup in [`backend/README.md`](backend/README.md).
+Leave it running. Check it at http://localhost:8080/api/students, or use the **SkatePod** collection in Postman.
+
+**Tab 2: iPhone app**
+
+```bash
+cd mobile
+npx expo start             # scan the QR code with your iPhone camera
+```
+
+Your Mac and iPhone need to be on the same Wi-Fi. If the phone can't connect, use `npx expo start --tunnel`. More details are in [`mobile/README.md`](mobile/README.md).
+
+### Stopping
+
+- App or API: press **Ctrl+C** in its tab.
+- Database: `cd backend && docker compose down`. Add `-v` to wipe its data and get the original sample data back on the next start.
 
 ## Run the web prototype
 
