@@ -1,7 +1,7 @@
 package com.skatepod.api.lesson.dto;
 
 import com.skatepod.api.lesson.LessonColor;
-import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
 
@@ -10,7 +10,7 @@ public record LessonResponse(
         UUID id,
         UUID studentId,
         String studentName,
-        DayOfWeek dayOfWeek,
+        LocalDate date,
         LocalTime startTime,
         int durationMinutes,
         String type,

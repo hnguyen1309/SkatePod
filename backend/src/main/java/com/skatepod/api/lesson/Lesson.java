@@ -10,10 +10,10 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
-import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 
-/** One slot in a coach's recurring weekly schedule. */
+/** One dated lesson on a coach's calendar. */
 @Entity
 @Table(name = "lessons")
 public class Lesson extends BaseEntity {
@@ -22,9 +22,8 @@ public class Lesson extends BaseEntity {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "day_of_week", nullable = false, length = 9)
-    private DayOfWeek dayOfWeek;
+    @Column(name = "lesson_date", nullable = false)
+    private LocalDate date;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
@@ -43,13 +42,13 @@ public class Lesson extends BaseEntity {
         // Required by JPA.
     }
 
-    public Lesson(Student student, DayOfWeek dayOfWeek, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
-        update(student, dayOfWeek, startTime, durationMinutes, type, color);
+    public Lesson(Student student, LocalDate date, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
+        update(student, date, startTime, durationMinutes, type, color);
     }
 
-    public void update(Student student, DayOfWeek dayOfWeek, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
+    public void update(Student student, LocalDate date, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
         this.student = student;
-        this.dayOfWeek = dayOfWeek;
+        this.date = date;
         this.startTime = startTime;
         this.durationMinutes = durationMinutes;
         this.type = type;
@@ -60,8 +59,8 @@ public class Lesson extends BaseEntity {
         return student;
     }
 
-    public DayOfWeek getDayOfWeek() {
-        return dayOfWeek;
+    public LocalDate getDate() {
+        return date;
     }
 
     public LocalTime getStartTime() {

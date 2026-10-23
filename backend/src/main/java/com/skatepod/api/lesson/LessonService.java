@@ -14,9 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class LessonService {
 
-    /** Monday first, then by start time, like a weekly calendar. */
-    static final Comparator<Lesson> WEEK_ORDER =
-            Comparator.comparing(Lesson::getDayOfWeek).thenComparing(Lesson::getStartTime);
+    /** Earliest date first, then by start time, like a calendar. */
+    static final Comparator<Lesson> CALENDAR_ORDER =
+            Comparator.comparing(Lesson::getDate).thenComparing(Lesson::getStartTime);
 
     private final LessonRepository lessons;
     private final StudentRepository students;
@@ -29,7 +29,7 @@ public class LessonService {
     @Transactional(readOnly = true)
     public List<LessonResponse> list(UUID studentId) {
         List<Lesson> found = studentId == null ? lessons.findAll() : lessons.findAllByStudentId(studentId);
-        return found.stream().sorted(WEEK_ORDER).map(LessonService::toResponse).toList();
+        return found.stream().sorted(CALENDAR_ORDER).map(LessonService::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -40,7 +40,7 @@ public class LessonService {
     @Transactional
     public LessonResponse create(LessonRequest request) {
         Student student = findStudent(request.studentId());
-        Lesson lesson = new Lesson(student, request.dayOfWeek(), request.startTime(),
+        Lesson lesson = new Lesson(student, request.date(), request.startTime(),
                 request.durationMinutes(), request.type().trim(), request.color());
         return toResponse(lessons.save(lesson));
     }
@@ -49,7 +49,7 @@ public class LessonService {
     public LessonResponse update(UUID id, LessonRequest request) {
         Lesson lesson = find(id);
         Student student = findStudent(request.studentId());
-        lesson.update(student, request.dayOfWeek(), request.startTime(),
+        lesson.update(student, request.date(), request.startTime(),
                 request.durationMinutes(), request.type().trim(), request.color());
         return toResponse(lesson);
     }
@@ -73,7 +73,7 @@ public class LessonService {
                 lesson.getId(),
                 student.getId(),
                 student.getName(),
-                lesson.getDayOfWeek(),
+                lesson.getDate(),
                 lesson.getStartTime(),
                 lesson.getDurationMinutes(),
                 lesson.getType(),
