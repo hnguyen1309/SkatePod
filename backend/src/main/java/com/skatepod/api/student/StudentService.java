@@ -1,15 +1,22 @@
 package com.skatepod.api.student;
 
+import com.skatepod.api.common.BadRequestException;
 import com.skatepod.api.common.NotFoundException;
 import com.skatepod.api.lesson.Lesson;
 import com.skatepod.api.lesson.LessonRepository;
 import com.skatepod.api.student.dto.NextLessonResponse;
+import com.skatepod.api.student.dto.StudentDisciplineRequest;
+import com.skatepod.api.student.dto.StudentDisciplineResponse;
 import com.skatepod.api.student.dto.StudentRequest;
 import com.skatepod.api.student.dto.StudentResponse;
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
@@ -50,20 +57,20 @@ public class StudentService {
     @Transactional
     public StudentResponse create(StudentRequest request) {
         Student student = students.save(new Student(
-                request.name().trim(), request.level().trim(), request.discipline().trim(),
-                blankToNull(request.focus()), request.progress()));
+                request.name().trim(), blankToNull(request.focus()), request.progress(),
+                toDisciplines(request.disciplines())));
         return toResponse(student, List.of());
     }
 
     @Transactional
     public StudentResponse update(UUID id, StudentRequest request) {
         Student student = find(id);
-        student.update(request.name().trim(), request.level().trim(), request.discipline().trim(),
-                blankToNull(request.focus()), request.progress());
+        student.update(request.name().trim(), blankToNull(request.focus()), request.progress(),
+                toDisciplines(request.disciplines()));
         return toResponse(student, lessons.findAllByStudentId(id));
     }
 
-    /** Deleting a student also deletes their lessons (ON DELETE CASCADE in the database). */
+    /** Deleting a student also deletes their lessons and disciplines (ON DELETE CASCADE in the database). */
     @Transactional
     public void delete(UUID id) {
         students.delete(find(id));
@@ -73,19 +80,52 @@ public class StudentService {
         return students.findById(id).orElseThrow(() -> new NotFoundException("Student", id));
     }
 
+    /**
+     * Checks the requested disciplines: each one only once, and each level must be one of
+     * that discipline's levels (e.g. "Juvenile" isn't a Standard Freeskate level).
+     */
+    private static List<StudentDiscipline> toDisciplines(List<StudentDisciplineRequest> requested) {
+        if (requested == null) {
+            return List.of();
+        }
+        Set<Discipline> seen = EnumSet.noneOf(Discipline.class);
+        List<StudentDiscipline> result = new ArrayList<>();
+        for (StudentDisciplineRequest item : requested) {
+            Discipline discipline = item.discipline();
+            String level = item.level().trim();
+            if (!seen.add(discipline)) {
+                throw new BadRequestException(discipline.getDisplayName() + " is listed more than once");
+            }
+            if (!discipline.hasLevel(level)) {
+                throw new BadRequestException(level + " is not a level in " + discipline.getDisplayName());
+            }
+            result.add(new StudentDiscipline(discipline, level));
+        }
+        return result;
+    }
+
     private StudentResponse toResponse(Student student, List<Lesson> studentLessons) {
         NextLessonResponse nextLesson = nextLessonCalculator
                 .findNext(studentLessons, LocalDateTime.now(clock))
                 .map(lesson -> new NextLessonResponse(lesson.getId(), lesson.getDate(),
                         lesson.getStartTime(), lesson.getType(), lesson.getDurationMinutes()))
                 .orElse(null);
+        // Same order as the Discipline enum, so Singles comes before Ice Dance and so on.
+        List<StudentDisciplineResponse> disciplines = student.getDisciplines().stream()
+                .sorted(Comparator.comparing(StudentDiscipline::getDiscipline))
+                .map(item -> new StudentDisciplineResponse(
+                        item.getDiscipline(),
+                        item.getDiscipline().getDisplayName(),
+                        item.getDiscipline().getCategory(),
+                        item.getDiscipline().getCategory().getDisplayName(),
+                        item.getLevel()))
+                .toList();
         return new StudentResponse(
                 student.getId(),
                 student.getName(),
-                student.getLevel(),
-                student.getDiscipline(),
                 student.getFocus(),
                 student.getProgress(),
+                disciplines,
                 nextLesson,
                 student.getCreatedAt(),
                 student.getUpdatedAt());

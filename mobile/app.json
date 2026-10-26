@@ -21,6 +21,9 @@
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#173d52"
       }
-    }
+    },
+    "plugins": [
+      "expo-status-bar"
+    ]
   }
 }

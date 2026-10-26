@@ -60,6 +60,7 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 | POST | `/api/students` | Create a student → 201 |
 | PUT | `/api/students/{id}` | Update a student |
 | DELETE | `/api/students/{id}` | Delete a student and their lessons → 204 |
+| GET | `/api/disciplines` | Every discipline with its category and levels (lowest first) |
 | GET | `/api/lessons?studentId=` | List lessons in calendar order (optionally for one student) |
 | GET | `/api/lessons/{id}` | One lesson |
 | POST | `/api/lessons` | Schedule a lesson → 201 |
@@ -69,6 +70,8 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 Errors come back as JSON "problem details": **400** for invalid input (with the field errors) and **404** for unknown IDs.
 
 A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
+
+A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`) and a level from that discipline's own ladder (for example `Pre-Gold`). Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong. The full list is in `Discipline.java` and at `GET /api/disciplines`.
 
 ## How the code is organized
 

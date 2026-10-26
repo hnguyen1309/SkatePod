@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -14,8 +14,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import type { Tone } from "../data";
-import { colors, radius, shadow } from "../theme";
+import { disciplineInfo, sortDisciplines, type StudentDiscipline, type Tone } from "../data";
+import { categoryColors, colors, radius, shadow } from "../theme";
 import { Icon, type IconName } from "./Icon";
 
 export function Screen({
@@ -245,6 +245,76 @@ export function PickerField<T extends string>({
   );
 }
 
+/**
+ * A field that opens its list of options right below it. Only listed options can be picked,
+ * so there's nothing to mistype. The list opens inline (not as a pop-up) because forms are
+ * already inside a Sheet, and iOS can't show a second pop-up on top of it.
+ */
+export function Dropdown<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+  renderLabel,
+  placeholder = "Choose…",
+}: {
+  label?: string;
+  options: readonly T[];
+  value: T | null;
+  onChange: (value: T) => void;
+  renderLabel?: (value: T) => string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const show = (option: T) => (renderLabel ? renderLabel(option) : option);
+
+  return (
+    <View style={{ marginBottom: 16 }}>
+      {label ? <Label>{label}</Label> : null}
+      <Pressable
+        accessibilityLabel={label ?? placeholder}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((current) => !current)}
+        style={[styles.input, styles.dropdown, open && { borderColor: colors.teal }]}
+      >
+        <Text numberOfLines={1} style={{ flex: 1, fontSize: 15, color: value ? colors.body : colors.faint }}>
+          {value ? show(value) : placeholder}
+        </Text>
+        <Icon color={colors.muted} name={open ? "up" : "down"} size={16} />
+      </Pressable>
+      {open ? (
+        <View style={styles.dropdownList}>
+          {options.map((option, index) => {
+            const selected = option === value;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={option}
+                onPress={() => {
+                  setOpen(false);
+                  onChange(option);
+                }}
+                style={({ pressed }) => [
+                  styles.dropdownOption,
+                  index > 0 && { borderTopWidth: 1, borderTopColor: colors.borderSoft },
+                  pressed && { backgroundColor: "#f3f8f8" },
+                ]}
+              >
+                <Text style={{ flex: 1, fontSize: 14, color: selected ? colors.navy : colors.body, fontWeight: selected ? "700" : "500" }}>
+                  {show(option)}
+                </Text>
+                {selected ? <Icon color={colors.navy} name="check" size={16} /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function Segmented<T extends string>({ options, value, onChange }: { options: readonly T[]; value: T; onChange: (value: T) => void }) {
   return (
     <View style={styles.segmented}>
@@ -270,6 +340,28 @@ export function Avatar({ initials, tone, size = 40 }: { initials: string; tone: 
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: tone.bg, alignItems: "center", justifyContent: "center" }}>
       <Text style={{ color: tone.fg, fontWeight: "700", fontSize: Math.round(size * 0.3) }}>{initials}</Text>
+    </View>
+  );
+}
+
+/** Small pills like "Pre-Gold · Freeskate", colored by discipline category. */
+export function DisciplineBadges({ disciplines, emptyColor = colors.muted }: { disciplines: StudentDiscipline[]; emptyColor?: string }) {
+  if (!disciplines.length) {
+    return <Text style={{ fontSize: 12, color: emptyColor }}>No disciplines yet</Text>;
+  }
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+      {sortDisciplines(disciplines).map((item) => {
+        const info = disciplineInfo(item.discipline);
+        const tone = categoryColors[info.category];
+        return (
+          <View key={item.discipline} style={[styles.badge, { backgroundColor: tone.bg }]}>
+            <Text style={{ fontSize: 11, fontWeight: "700", color: tone.fg }}>
+              {item.level} · {info.shortName}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -394,6 +486,10 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.white,
     paddingHorizontal: 12,
   },
+  dropdown: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dropdownList: { marginTop: 6, borderWidth: 1, borderColor: colors.input, borderRadius: radius.md, backgroundColor: colors.white, overflow: "hidden" },
+  dropdownOption: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 11 },
+  badge: { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
   chip: { borderRadius: 10, borderWidth: 1, borderColor: colors.input, backgroundColor: colors.white, paddingHorizontal: 12, paddingVertical: 8 },
   chipText: { fontSize: 13, fontWeight: "600", color: colors.subtle },
   segmented: { flexDirection: "row", backgroundColor: colors.track, borderRadius: radius.md, padding: 3 },

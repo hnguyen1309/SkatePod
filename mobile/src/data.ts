@@ -2,13 +2,35 @@ import type { LessonColor } from "./theme";
 
 export type Tone = { bg: string; fg: string };
 
+export type DisciplineCategory =
+  | "SINGLES"
+  | "SKATING_SKILLS"
+  | "ICE_DANCE"
+  | "PAIRS"
+  | "SYNCHRONIZED"
+  | "SHOWCASE"
+  | "THEATRE_ON_ICE";
+
+export type DisciplineId =
+  | "STANDARD_FREESKATE"
+  | "ADULT_FREESKATE"
+  | "STANDARD_SKILLS"
+  | "ADULT_SKILLS"
+  | "PATTERN_DANCE"
+  | "FREE_DANCE"
+  | "PAIRS"
+  | "SYNCHRO"
+  | "SHOWCASE"
+  | "THEATRE_ON_ICE";
+
+/** One discipline a student trains in, and their level in it. */
+export type StudentDiscipline = { discipline: DisciplineId; level: string };
+
 export type Student = {
   id: string;
   name: string;
-  level: string;
-  discipline: string;
-  nextLesson: string;
-  focus: string;
+  disciplines: StudentDiscipline[]; // can be empty
+  focus: string; // the next lesson isn't stored here: it comes from the calendar (findNextLesson)
   progress: number;
   tone: Tone;
 };
@@ -87,7 +109,90 @@ export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
-export const LEVEL_FILTERS = ["All levels", "Preliminary", "Pre-Gold", "Juvenile", "Intermediate", "Adult Gold"];
+export const DISCIPLINE_CATEGORIES: { id: DisciplineCategory; name: string }[] = [
+  { id: "SINGLES", name: "Singles" },
+  { id: "SKATING_SKILLS", name: "Skating Skills" },
+  { id: "ICE_DANCE", name: "Ice Dance" },
+  { id: "PAIRS", name: "Pairs" },
+  { id: "SYNCHRONIZED", name: "Synchronized" },
+  { id: "SHOWCASE", name: "Showcase" },
+  { id: "THEATRE_ON_ICE", name: "Theatre On Ice" },
+];
+
+export type DisciplineInfo = {
+  id: DisciplineId;
+  name: string; // full name, used in dropdowns
+  shortName: string; // used on the small colored badges
+  category: DisciplineCategory;
+  levels: readonly string[]; // lowest first
+};
+
+// Every discipline and its levels (US Figure Skating test structure), lowest level first.
+// Same list as backend/.../student/Discipline.java. Change both together.
+export const DISCIPLINES: DisciplineInfo[] = [
+  {
+    id: "STANDARD_FREESKATE", name: "Standard Track (Freeskate)", shortName: "Freeskate", category: "SINGLES",
+    levels: ["Pre-Preliminary", "Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold"],
+  },
+  {
+    id: "ADULT_FREESKATE", name: "Adult Track (Freeskate)", shortName: "Adult Freeskate", category: "SINGLES",
+    levels: ["Adult Beginner", "Adult High Beginner", "Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Adult Gold"],
+  },
+  {
+    id: "STANDARD_SKILLS", name: "Standard Track (Skills)", shortName: "Skills", category: "SKATING_SKILLS",
+    levels: ["Pre-Preliminary", "Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold"],
+  },
+  {
+    id: "ADULT_SKILLS", name: "Adult Track (Skills)", shortName: "Adult Skills", category: "SKATING_SKILLS",
+    levels: ["Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Adult Gold"],
+  },
+  {
+    id: "PATTERN_DANCE", name: "Pattern Dance (Solo/Partnered)", shortName: "Pattern Dance", category: "ICE_DANCE",
+    levels: ["Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold", "International"],
+  },
+  {
+    id: "FREE_DANCE", name: "Free Dance (Solo/Partnered)", shortName: "Free Dance", category: "ICE_DANCE",
+    levels: ["Juvenile", "Intermediate", "Novice", "Junior", "Senior"],
+  },
+  {
+    id: "PAIRS", name: "Pair Track", shortName: "Pairs", category: "PAIRS",
+    levels: ["Centennial", "Juvenile", "Intermediate", "Novice", "Junior", "Senior"],
+  },
+  {
+    id: "SYNCHRO", name: "Synchro Team", shortName: "Synchro", category: "SYNCHRONIZED",
+    levels: ["Aspire", "Preliminary", "Open Juvenile", "Juvenile", "Intermediate", "Novice", "Junior", "Senior"],
+  },
+  {
+    id: "SHOWCASE", name: "Individual / Duet", shortName: "Showcase", category: "SHOWCASE",
+    levels: ["Preliminary", "Pre-Bronze", "Bronze", "Silver", "Gold"],
+  },
+  {
+    id: "THEATRE_ON_ICE", name: "TOI Team Production", shortName: "Theatre On Ice", category: "THEATRE_ON_ICE",
+    levels: ["Intro to TOI", "Open", "Preliminary", "Intermediate", "Novice", "Junior", "Senior"],
+  },
+];
+
+export function disciplineInfo(id: DisciplineId) {
+  return DISCIPLINES.find((item) => item.id === id) ?? DISCIPLINES[0];
+}
+
+export function categoryName(id: DisciplineCategory) {
+  return DISCIPLINE_CATEGORIES.find((item) => item.id === id)?.name ?? id;
+}
+
+/** Puts disciplines in catalog order (Singles first, then Skating Skills, and so on). */
+export function sortDisciplines(list: StudentDiscipline[]) {
+  const position = (item: StudentDiscipline) => DISCIPLINES.findIndex((info) => info.id === item.discipline);
+  return [...list].sort((a, b) => position(a) - position(b));
+}
+
+/** One line like "Pre-Gold Freeskate · Gold Skills", also used for search. */
+export function disciplineSummary(student: Student) {
+  if (!student.disciplines.length) return "No disciplines yet";
+  return sortDisciplines(student.disciplines)
+    .map((item) => `${item.level} ${disciplineInfo(item.discipline).shortName}`)
+    .join(" · ");
+}
 
 export const TONES: Tone[] = [
   { bg: "#dcebee", fg: "#396972" },
@@ -120,12 +225,12 @@ function daysAgo(days: number) {
 
 // All sample people below are made up.
 export const SAMPLE_STUDENTS: Student[] = [
-  { id: "s1", name: "Emma Miller", level: "Pre-Gold", discipline: "Freestyle", nextLesson: "Today, 9:00 AM", focus: "Double loop", progress: 74, tone: TONES[0] },
-  { id: "s2", name: "Lily Kim", level: "Juvenile", discipline: "Freestyle", nextLesson: "Today, 11:30 AM", focus: "Flying camel", progress: 61, tone: TONES[1] },
-  { id: "s3", name: "Jonah Reed", level: "Preliminary", discipline: "Moves", nextLesson: "Tomorrow, 7:00 AM", focus: "Power pulls", progress: 82, tone: TONES[2] },
-  { id: "s4", name: "Sofia Chen", level: "Intermediate", discipline: "Freestyle", nextLesson: "Friday, 4:30 PM", focus: "Double axel", progress: 57, tone: TONES[3] },
-  { id: "s5", name: "Noah Bennett", level: "Adult Gold", discipline: "Freestyle", nextLesson: "Saturday, 8:00 AM", focus: "Combination spin", progress: 69, tone: TONES[4] },
-  { id: "s6", name: "Amelia Park", level: "Preliminary", discipline: "Freestyle", nextLesson: "Saturday, 10:30 AM", focus: "Axel", progress: 46, tone: TONES[5] },
+  { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], focus: "Double loop", progress: 74, tone: TONES[0] },
+  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], focus: "Flying camel", progress: 61, tone: TONES[1] },
+  { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], focus: "Power pulls", progress: 82, tone: TONES[2] },
+  { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], focus: "Double axel", progress: 57, tone: TONES[3] },
+  { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], focus: "Combination spin", progress: 69, tone: TONES[4] },
+  { id: "s6", name: "Amelia Park", disciplines: [], focus: "Axel", progress: 46, tone: TONES[5] },
 ];
 
 export const SAMPLE_LESSONS: Lesson[] = [
@@ -224,4 +329,42 @@ export function weekDates(offset: number) {
 
 export function todayIndex() {
   return (new Date().getDay() + 6) % 7;
+}
+
+const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+/** The hour a calendar row starts, e.g. row 3 ("1 PM") → 13. */
+function rowHour(row: number) {
+  const [hour, half] = TIMES[row].split(" ");
+  return (Number(hour) % 12) + (half === "PM" ? 12 : 0);
+}
+
+/**
+ * A student's next lesson, worked out from the weekly calendar (the calendar is the source of truth,
+ * like NextLessonCalculator in the backend). A lesson that already started today counts as next week's.
+ * Returns null when the student has no lessons on the calendar.
+ */
+export function findNextLesson(studentId: string, lessons: Lesson[], now = new Date()) {
+  const today = (now.getDay() + 6) % 7;
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  let best: { lesson: Lesson; daysAhead: number } | null = null;
+
+  for (const lesson of lessons) {
+    if (lesson.studentId !== studentId) continue;
+    let daysAhead = (lesson.day - today + 7) % 7;
+    if (daysAhead === 0 && rowHour(lesson.row) * 60 < nowMinutes) daysAhead = 7;
+    const sooner = !best || daysAhead < best.daysAhead || (daysAhead === best.daysAhead && lesson.row < best.lesson.row);
+    if (sooner) best = { lesson, daysAhead };
+  }
+  if (!best) return null;
+
+  const { lesson, daysAhead } = best;
+  const day =
+    daysAhead === 0 ? "Today" : daysAhead === 1 ? "Tomorrow" : daysAhead === 7 ? `Next ${FULL_WEEKDAYS[lesson.day]}` : FULL_WEEKDAYS[lesson.day];
+  return { lesson, label: `${day}, ${TIMES[lesson.row].replace(" ", ":00 ")}` };
+}
+
+/** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
+export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
+  return findNextLesson(studentId, lessons)?.label ?? "Not scheduled";
 }
