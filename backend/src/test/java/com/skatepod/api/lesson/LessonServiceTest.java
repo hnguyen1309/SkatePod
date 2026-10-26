@@ -12,7 +12,7 @@ import com.skatepod.api.lesson.dto.LessonRequest;
 import com.skatepod.api.lesson.dto.LessonResponse;
 import com.skatepod.api.student.Student;
 import com.skatepod.api.student.StudentRepository;
-import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -44,7 +44,7 @@ class LessonServiceTest {
     void createForUnknownStudentThrowsAndSavesNothing() {
         UUID studentId = UUID.randomUUID();
         when(students.findById(studentId)).thenReturn(Optional.empty());
-        LessonRequest request = new LessonRequest(studentId, DayOfWeek.MONDAY, LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL);
+        LessonRequest request = new LessonRequest(studentId, LocalDate.of(2026, 10, 26), LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL);
 
         assertThatThrownBy(() -> service.create(request)).isInstanceOf(NotFoundException.class);
         verify(lessons, never()).save(any());
@@ -57,23 +57,23 @@ class LessonServiceTest {
         when(lessons.save(any(Lesson.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         LessonResponse created = service.create(
-                new LessonRequest(studentId, DayOfWeek.FRIDAY, LocalTime.of(7, 30), 60, " Moves ", LessonColor.SAND));
+                new LessonRequest(studentId, LocalDate.of(2026, 10, 23), LocalTime.of(7, 30), 60, " Public ", LessonColor.SAND));
 
         assertThat(created.studentName()).isEqualTo("Emma");
-        assertThat(created.dayOfWeek()).isEqualTo(DayOfWeek.FRIDAY);
+        assertThat(created.date()).isEqualTo(LocalDate.of(2026, 10, 23));
         assertThat(created.startTime()).isEqualTo(LocalTime.of(7, 30));
-        assertThat(created.type()).isEqualTo("Moves");
+        assertThat(created.type()).isEqualTo("Public");
     }
 
     @Test
-    void listIsInWeekOrder() {
-        Lesson saturday = new Lesson(emma, DayOfWeek.SATURDAY, LocalTime.of(9, 0), 45, "Program", LessonColor.TEAL);
-        Lesson mondayLate = new Lesson(emma, DayOfWeek.MONDAY, LocalTime.of(15, 0), 45, "Moves", LessonColor.SAND);
-        Lesson mondayEarly = new Lesson(emma, DayOfWeek.MONDAY, LocalTime.of(7, 0), 45, "Freestyle", LessonColor.TEAL);
-        when(lessons.findAll()).thenReturn(List.of(saturday, mondayLate, mondayEarly));
+    void listIsInCalendarOrder() {
+        Lesson nextMonth = new Lesson(emma, LocalDate.of(2026, 11, 2), LocalTime.of(7, 0), 45, "Off-ice", LessonColor.PURPLE);
+        Lesson mondayLate = new Lesson(emma, LocalDate.of(2026, 10, 26), LocalTime.of(15, 0), 45, "Public", LessonColor.SAND);
+        Lesson mondayEarly = new Lesson(emma, LocalDate.of(2026, 10, 26), LocalTime.of(7, 0), 45, "Freestyle", LessonColor.TEAL);
+        when(lessons.findAll()).thenReturn(List.of(nextMonth, mondayLate, mondayEarly));
 
         List<LessonResponse> result = service.list(null);
 
-        assertThat(result).extracting(LessonResponse::type).containsExactly("Freestyle", "Moves", "Program");
+        assertThat(result).extracting(LessonResponse::type).containsExactly("Freestyle", "Public", "Off-ice");
     }
 }

@@ -14,20 +14,40 @@ import org.springframework.stereotype.Component;
  * should do. Remove the @Disabled line there, run ./mvnw test, and make them pass.
  *
  * Rules (from the acceptance criteria):
- *  - Lessons repeat every week (each has a dayOfWeek and startTime).
+ *  - The calendar is the source of truth. Each lesson is one dated entry on it
+ *    (a date and a startTime). Nothing repeats automatically.
+ *  - A student can have any number of lessons: twice a week, once a month, or a one-off.
  *  - Return the lesson that starts soonest at or after `now`.
- *  - If every lesson this week has already started, wrap around to next week.
- *  - No lessons → Optional.empty() (the app shows "Not scheduled").
+ *  - Lessons that have already started (an earlier date, or earlier today) are skipped.
+ *  - No upcoming lessons → Optional.empty() (the app shows "Not scheduled").
  *
- * Hint: for each lesson, work out how many minutes from `now` until it next starts
- * (0 to 7 days ahead), then pick the smallest. Look at now.getDayOfWeek(),
- * now.toLocalTime(), and DayOfWeek.getValue().
+ * Hint: lesson.getDate().atTime(lesson.getStartTime()) gives the moment a lesson starts.
+ * Keep the ones that aren't before `now`, then pick the earliest.
  */
 @Component
 public class NextLessonCalculator {
 
     public Optional<Lesson> findNext(List<Lesson> lessons, LocalDateTime now) {
-        // TODO(Han): implement feature #2.
-        return Optional.empty();
+        
+        Lesson bestLesson = null;
+        LocalDateTime bestStartsAt = null;
+
+        for (Lesson lesson : lessons) {
+            LocalDateTime startsAt = lesson.getDate().atTime(lesson.getStartTime());
+
+            // Already started, so it can't be the next lesson.
+            if (startsAt.isBefore(now)) {
+                continue;
+            }
+
+            // First upcoming lesson found, or sooner than the best so far.
+            if (bestLesson == null || startsAt.isBefore(bestStartsAt)) {
+                bestLesson = lesson;
+                bestStartsAt = startsAt;
+            }
+        }
+
+        // Still null if there were no lessons, or they were all in the past.
+        return Optional.ofNullable(bestLesson);
     }
 }

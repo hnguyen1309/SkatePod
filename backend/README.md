@@ -1,6 +1,6 @@
 # SkatePod API (Spring Boot)
 
-REST API for the SkatePod app: students and their weekly lessons, stored in PostgreSQL.
+REST API for the SkatePod app: students and their lessons (dated entries on the coach's calendar), stored in PostgreSQL.
 
 **Stack:** Java 21 · Spring Boot 4.1 · Spring Data JPA · Bean Validation · Flyway · PostgreSQL 17 · Maven
 
@@ -60,13 +60,15 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 | POST | `/api/students` | Create a student → 201 |
 | PUT | `/api/students/{id}` | Update a student |
 | DELETE | `/api/students/{id}` | Delete a student and their lessons → 204 |
-| GET | `/api/lessons?studentId=` | List lessons in week order (optionally for one student) |
+| GET | `/api/lessons?studentId=` | List lessons in calendar order (optionally for one student) |
 | GET | `/api/lessons/{id}` | One lesson |
 | POST | `/api/lessons` | Schedule a lesson → 201 |
 | PUT | `/api/lessons/{id}` | Update a lesson |
 | DELETE | `/api/lessons/{id}` | Delete a lesson → 204 |
 
 Errors come back as JSON "problem details": **400** for invalid input (with the field errors) and **404** for unknown IDs.
+
+A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
 
 ## How the code is organized
 
@@ -92,7 +94,7 @@ src/main/resources/
 > As an instructor, I want each student's next lesson to come from my calendar, so that I always see accurate schedule info without updating it twice.
 
 1. Open `src/test/java/.../student/NextLessonCalculatorTest.java` and delete the `@Disabled` line.
-2. Run `./mvnw test` and watch 5 of its 6 tests fail (red). The "no lessons" one already passes.
+2. Run `./mvnw test` and watch 5 of its 7 tests fail (red). The two that expect "not scheduled" already pass.
 3. Implement `NextLessonCalculator.findNext()` until they all pass (green).
 4. Run the app and `GET /api/students`: each student's `nextLesson` is now filled in.
 

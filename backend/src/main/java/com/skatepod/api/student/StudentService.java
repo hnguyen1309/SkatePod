@@ -76,7 +76,7 @@ public class StudentService {
     private StudentResponse toResponse(Student student, List<Lesson> studentLessons) {
         NextLessonResponse nextLesson = nextLessonCalculator
                 .findNext(studentLessons, LocalDateTime.now(clock))
-                .map(lesson -> new NextLessonResponse(lesson.getId(), lesson.getDayOfWeek(),
+                .map(lesson -> new NextLessonResponse(lesson.getId(), lesson.getDate(),
                         lesson.getStartTime(), lesson.getType(), lesson.getDurationMinutes()))
                 .orElse(null);
         return new StudentResponse(
