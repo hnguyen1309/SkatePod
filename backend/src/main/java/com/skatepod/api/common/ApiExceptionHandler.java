@@ -26,4 +26,11 @@ public class ApiExceptionHandler {
         problem.setTitle("Bad request");
         return problem;
     }
+
+    @ExceptionHandler(ConflictException.class)
+    public ProblemDetail handleConflict(ConflictException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setTitle("Conflict");
+        return problem;
+    }
 }

@@ -331,7 +331,7 @@ export function todayIndex() {
   return (new Date().getDay() + 6) % 7;
 }
 
-const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+export const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /** The hour a calendar row starts, e.g. row 3 ("1 PM") → 13. */
 function rowHour(row: number) {
@@ -367,4 +367,20 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
 export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
   return findNextLesson(studentId, lessons)?.label ?? "Not scheduled";
+}
+
+/**
+ * The lesson that's already in the way of `lesson`, or undefined if the time is free.
+ * A coach teaches one lesson at a time, so this checks every student's lessons on the same day.
+ * Two lessons clash when each one starts before the other ends (back-to-back is fine).
+ * Same rule as LessonService.checkTimeIsFree in the backend.
+ */
+export function findClash(lesson: Pick<Lesson, "id" | "day" | "row" | "duration">, lessons: Lesson[]) {
+  const start = rowHour(lesson.row) * 60;
+  const end = start + lesson.duration;
+  return lessons.find((other) => {
+    if (other.id === lesson.id || other.day !== lesson.day) return false;
+    const otherStart = rowHour(other.row) * 60;
+    return start < otherStart + other.duration && otherStart < end;
+  });
 }
