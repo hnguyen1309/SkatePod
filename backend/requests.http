@@ -64,6 +64,19 @@ Content-Type: application/json
   "color": "TEAL"
 }
 
+### Invalid lesson type example → 400 (only Public, Freestyle or Off-ice)
+POST {{baseUrl}}/lessons
+Content-Type: application/json
+
+{
+  "studentId": "11111111-1111-1111-1111-000000000004",
+  "date": "2026-11-06",
+  "startTime": "16:30",
+  "durationMinutes": 45,
+  "type": "Moves",
+  "color": "SAND"
+}
+
 ### Not found example → 404
 GET {{baseUrl}}/students/00000000-0000-0000-0000-000000000000
 

@@ -84,7 +84,7 @@ export type Settings = {
 
 export const TIMES = ["7 AM", "9 AM", "11 AM", "1 PM", "3 PM"];
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-export const LESSON_TYPES = ["Freestyle", "Moves", "Program", "Off-ice", "Spins"];
+export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
 export const LEVEL_FILTERS = ["All levels", "Preliminary", "Pre-Gold", "Juvenile", "Intermediate", "Adult Gold"];
@@ -129,20 +129,20 @@ export const SAMPLE_STUDENTS: Student[] = [
 ];
 
 export const SAMPLE_LESSONS: Lesson[] = [
-  { id: "l1", studentId: "s3", day: 0, row: 2, type: "Moves", duration: 45, color: "teal" },
-  { id: "l2", studentId: "s2", day: 1, row: 1, type: "Freestyle", duration: 60, color: "sand" },
+  { id: "l1", studentId: "s3", day: 0, row: 2, type: "Public", duration: 45, color: "sand" },
+  { id: "l2", studentId: "s2", day: 1, row: 1, type: "Freestyle", duration: 60, color: "teal" },
   { id: "l3", studentId: "s1", day: 2, row: 4, type: "Off-ice", duration: 30, color: "purple" },
   { id: "l4", studentId: "s1", day: 3, row: 0, type: "Freestyle", duration: 60, color: "teal" },
-  { id: "l5", studentId: "s2", day: 3, row: 3, type: "Freestyle", duration: 45, color: "sand" },
-  { id: "l6", studentId: "s3", day: 4, row: 2, type: "Moves", duration: 45, color: "purple" },
-  { id: "l7", studentId: "s1", day: 5, row: 1, type: "Program", duration: 60, color: "teal" },
+  { id: "l5", studentId: "s2", day: 3, row: 3, type: "Freestyle", duration: 45, color: "teal" },
+  { id: "l6", studentId: "s3", day: 4, row: 2, type: "Off-ice", duration: 45, color: "purple" },
+  { id: "l7", studentId: "s1", day: 5, row: 1, type: "Public", duration: 60, color: "sand" },
 ];
 
 export const SAMPLE_NOTES: Note[] = [
   { id: "n1", studentId: "s1", date: daysAgo(0), title: "Freestyle lesson", lessonType: "Freestyle", duration: "60 minutes", overall: "Strong progress", focus: "Double loop, flying camel spin", observations: "Much stronger check on the double loop today. Landing was controlled on 4 of 6 attempts. Keep the free leg extended longer through the exit.", nextSteps: "Start next lesson with loop entrance drills, then connect the jump into the opening program section.", skills: ["Double loop", "Flying camel", "Program transitions"], shared: true },
-  { id: "n2", studentId: "s2", date: daysAgo(2), title: "Spin session", lessonType: "Spins", duration: "45 minutes", overall: "Steady", focus: "Flying camel, spin combinations", observations: "Flying camel entry is more consistent from speed. Centering improved when the entry edge stayed patient.", nextSteps: "Practice three controlled entries before adding the change-foot combination.", skills: ["Flying camel", "Combination spin"], shared: true },
-  { id: "n3", studentId: "s3", date: daysAgo(3), title: "Moves in the field", lessonType: "Moves", duration: "45 minutes", overall: "Steady", focus: "Power pulls and edge quality", observations: "Continue working on knee action through power pulls. Stronger flow on the right side.", nextSteps: "Complete two sets on each foot with emphasis on rhythm.", skills: ["Power pulls", "Outside edges"], shared: true },
-  { id: "n4", studentId: "s4", date: daysAgo(6), title: "Program run-through", lessonType: "Program", duration: "60 minutes", overall: "Strong progress", focus: "Free skate run-through", observations: "Great musical timing. Rework the final jump entrance to preserve speed into the last section.", nextSteps: "Mark the revised entrance twice, then complete one full run-through.", skills: ["Program transitions", "Double axel"], shared: true },
+  { id: "n2", studentId: "s2", date: daysAgo(2), title: "Spin session", lessonType: "Public", duration: "45 minutes", overall: "Steady", focus: "Flying camel, spin combinations", observations: "Flying camel entry is more consistent from speed. Centering improved when the entry edge stayed patient.", nextSteps: "Practice three controlled entries before adding the change-foot combination.", skills: ["Flying camel", "Combination spin"], shared: true },
+  { id: "n3", studentId: "s3", date: daysAgo(3), title: "Moves in the field", lessonType: "Public", duration: "45 minutes", overall: "Steady", focus: "Power pulls and edge quality", observations: "Continue working on knee action through power pulls. Stronger flow on the right side.", nextSteps: "Complete two sets on each foot with emphasis on rhythm.", skills: ["Power pulls", "Outside edges"], shared: true },
+  { id: "n4", studentId: "s4", date: daysAgo(6), title: "Program run-through", lessonType: "Freestyle", duration: "60 minutes", overall: "Strong progress", focus: "Free skate run-through", observations: "Great musical timing. Rework the final jump entrance to preserve speed into the last section.", nextSteps: "Mark the revised entrance twice, then complete one full run-through.", skills: ["Program transitions", "Double axel"], shared: true },
 ];
 
 export const SAMPLE_SETTINGS: Settings = {

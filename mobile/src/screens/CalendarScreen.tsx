@@ -189,8 +189,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14, padding: 12, borderTopWidth: 1, borderTopColor: "#e8edf1" }}>
           <Legend color={lessonColors.teal.dot} label="Freestyle" />
-          <Legend color={lessonColors.sand.dot} label="Moves" />
-          <Legend color={lessonColors.purple.dot} label="Off-ice / program" />
+          <Legend color={lessonColors.sand.dot} label="Public" />
+          <Legend color={lessonColors.purple.dot} label="Off-ice" />
         </View>
       </Card>
 
@@ -313,7 +313,7 @@ function LessonEditor({
         label="Color"
         onChange={setColor}
         options={["teal", "sand", "purple"] as const}
-        renderLabel={(value) => ({ teal: "Freestyle", sand: "Moves", purple: "Off-ice / program" })[value]}
+        renderLabel={(value) => ({ teal: "Freestyle", sand: "Public", purple: "Off-ice" })[value]}
         value={color}
       />
     </Sheet>

@@ -68,6 +68,8 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 
 Errors come back as JSON "problem details": **400** for invalid input (with the field errors) and **404** for unknown IDs.
 
+A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
+
 ## How the code is organized
 
 ```
