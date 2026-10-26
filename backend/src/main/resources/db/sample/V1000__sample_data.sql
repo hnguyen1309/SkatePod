@@ -1,11 +1,23 @@
 -- Made-up sample data, loaded only with the "dev" profile.
-INSERT INTO students (id, name, level, discipline, focus, progress, created_at, updated_at) VALUES
-    ('11111111-1111-1111-1111-000000000001', 'Emma Miller',  'Pre-Gold',     'Freestyle', 'Double loop',      74, now(), now()),
-    ('11111111-1111-1111-1111-000000000002', 'Lily Kim',     'Juvenile',     'Freestyle', 'Flying camel',     61, now(), now()),
-    ('11111111-1111-1111-1111-000000000003', 'Jonah Reed',   'Preliminary',  'Moves',     'Power pulls',      82, now(), now()),
-    ('11111111-1111-1111-1111-000000000004', 'Sofia Chen',   'Intermediate', 'Freestyle', 'Double axel',      57, now(), now()),
-    ('11111111-1111-1111-1111-000000000005', 'Noah Bennett', 'Adult Gold',   'Freestyle', 'Combination spin', 69, now(), now()),
-    ('11111111-1111-1111-1111-000000000006', 'Amelia Park',  'Preliminary',  'Freestyle', 'Axel',             46, now(), now());
+INSERT INTO students (id, name, focus, progress, created_at, updated_at) VALUES
+    ('11111111-1111-1111-1111-000000000001', 'Emma Miller',  'Double loop',      74, now(), now()),
+    ('11111111-1111-1111-1111-000000000002', 'Lily Kim',     'Flying camel',     61, now(), now()),
+    ('11111111-1111-1111-1111-000000000003', 'Jonah Reed',   'Power pulls',      82, now(), now()),
+    ('11111111-1111-1111-1111-000000000004', 'Sofia Chen',   'Double axel',      57, now(), now()),
+    ('11111111-1111-1111-1111-000000000005', 'Noah Bennett', 'Combination spin', 69, now(), now()),
+    ('11111111-1111-1111-1111-000000000006', 'Amelia Park',  'Axel',             46, now(), now());
+
+-- Each student's disciplines and their level in each. Amelia has none yet.
+INSERT INTO student_disciplines (student_id, discipline, level) VALUES
+    ('11111111-1111-1111-1111-000000000001', 'STANDARD_FREESKATE', 'Pre-Gold'),
+    ('11111111-1111-1111-1111-000000000001', 'STANDARD_SKILLS',    'Gold'),
+    ('11111111-1111-1111-1111-000000000002', 'STANDARD_FREESKATE', 'Silver'),
+    ('11111111-1111-1111-1111-000000000002', 'PATTERN_DANCE',      'Bronze'),
+    ('11111111-1111-1111-1111-000000000003', 'STANDARD_SKILLS',    'Preliminary'),
+    ('11111111-1111-1111-1111-000000000004', 'STANDARD_FREESKATE', 'Gold'),
+    ('11111111-1111-1111-1111-000000000004', 'FREE_DANCE',         'Juvenile'),
+    ('11111111-1111-1111-1111-000000000005', 'ADULT_FREESKATE',    'Adult Gold'),
+    ('11111111-1111-1111-1111-000000000005', 'ADULT_SKILLS',       'Adult Silver');
 
 -- Dated calendar entries, relative to the day the database is created so there's always
 -- something upcoming. Emma: twice a week. Lily: weekly. Jonah: every other week.

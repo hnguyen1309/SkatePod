@@ -3,6 +3,7 @@ import Svg, { Circle, G, Path, Rect } from "react-native-svg";
 
 export type IconName =
   | "calendar"
+  | "check"
   | "chevron"
   | "chevronLeft"
   | "clock"
@@ -28,6 +29,7 @@ const paths: Record<IconName, ReactNode> = {
       <Rect x="4" y="5" width="16" height="16" rx="3" />
     </>
   ),
+  check: <Path d="m5 12 5 5 9-10" />,
   chevron: <Path d="m9 18 6-6-6-6" />,
   chevronLeft: <Path d="m15 18-6-6 6-6" />,
   clock: (

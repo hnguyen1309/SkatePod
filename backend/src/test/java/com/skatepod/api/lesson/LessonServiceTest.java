@@ -33,7 +33,7 @@ class LessonServiceTest {
     private StudentRepository students;
 
     private LessonService service;
-    private final Student emma = new Student("Emma", "Pre-Gold", "Freestyle", null, 50);
+    private final Student emma = new Student("Emma", null, 50, List.of());
 
     @BeforeEach
     void setUp() {

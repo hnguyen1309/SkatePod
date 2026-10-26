@@ -10,16 +10,21 @@ GET {{baseUrl}}/students
 ### Get one student (Emma)
 GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000001
 
-### Create a student
+### List disciplines and their levels (what the app's dropdowns show)
+GET {{baseUrl}}/disciplines
+
+### Create a student (disciplines can also be left out or empty)
 POST {{baseUrl}}/students
 Content-Type: application/json
 
 {
   "name": "Mai",
-  "level": "Adult Bronze",
-  "discipline": "Freestyle",
   "focus": "Waltz jump",
-  "progress": 20
+  "progress": 20,
+  "disciplines": [
+    { "discipline": "ADULT_FREESKATE", "level": "Adult Bronze" },
+    { "discipline": "PATTERN_DANCE", "level": "Bronze" }
+  ]
 }
 
 ### Validation error example (blank name, progress over 100) → 400
@@ -28,21 +33,33 @@ Content-Type: application/json
 
 {
   "name": "",
-  "level": "Preliminary",
-  "discipline": "Freestyle",
   "progress": 150
 }
 
-### Update a student
+### Level from another discipline → 400 (Juvenile isn't a Standard Freeskate level)
+POST {{baseUrl}}/students
+Content-Type: application/json
+
+{
+  "name": "Mai",
+  "progress": 20,
+  "disciplines": [
+    { "discipline": "STANDARD_FREESKATE", "level": "Juvenile" }
+  ]
+}
+
+### Update a student (the disciplines list replaces the old one)
 PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001
 Content-Type: application/json
 
 {
   "name": "Emma Miller",
-  "level": "Gold",
-  "discipline": "Freestyle",
   "focus": "Double flip",
-  "progress": 80
+  "progress": 80,
+  "disciplines": [
+    { "discipline": "STANDARD_FREESKATE", "level": "Gold" },
+    { "discipline": "STANDARD_SKILLS", "level": "Gold" }
+  ]
 }
 
 ### List all lessons in calendar order

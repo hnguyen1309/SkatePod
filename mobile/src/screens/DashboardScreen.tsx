@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
-import { Avatar, Card, Empty, Heading, ProgressBar, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
-import { TIMES, WEEKDAYS, initialsOf, todayIndex, type Student } from "../data";
+import { Avatar, Card, DisciplineBadges, Empty, Heading, ProgressBar, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
+import { TIMES, WEEKDAYS, disciplineSummary, initialsOf, nextLessonLabel, todayIndex, type Student } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius } from "../theme";
@@ -20,7 +20,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   const firstName = settings.coachName.split(" ")[0] || "Coach";
 
   const filtered = students.filter((student) =>
-    `${student.name} ${student.level} ${student.discipline}`.toLowerCase().includes(query.toLowerCase()),
+    `${student.name} ${disciplineSummary(student)}`.toLowerCase().includes(query.toLowerCase()),
   );
 
   const today = todayIndex();
@@ -61,7 +61,12 @@ export function DashboardScreen({ navigate }: ScreenProps) {
       {filtered.length ? (
         <View style={{ gap: 12, marginBottom: 28 }}>
           {filtered.map((student) => (
-            <StudentCard key={student.id} onPress={() => navigate("Students", { kind: "openStudent", studentId: student.id })} student={student} />
+            <StudentCard
+              key={student.id}
+              nextLesson={nextLessonLabel(student.id, lessons)}
+              onPress={() => navigate("Students", { kind: "openStudent", studentId: student.id })}
+              student={student}
+            />
           ))}
         </View>
       ) : (
@@ -112,7 +117,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   );
 }
 
-function StudentCard({ student, onPress }: { student: Student; onPress: () => void }) {
+function StudentCard({ student, nextLesson, onPress }: { student: Student; nextLesson: string; onPress: () => void }) {
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.8 }}>
       <Card>
@@ -122,9 +127,9 @@ function StudentCard({ student, onPress }: { student: Student; onPress: () => vo
             <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
               {student.name}
             </Text>
-            <Text numberOfLines={1} style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-              {student.level} · {student.discipline}
-            </Text>
+            <View style={{ marginTop: 4 }}>
+              <DisciplineBadges disciplines={student.disciplines} />
+            </View>
           </View>
           <Icon color={colors.faint} name="chevron" size={16} />
         </View>
@@ -141,7 +146,7 @@ function StudentCard({ student, onPress }: { student: Student; onPress: () => vo
           }}
         >
           <Icon color="#5f9195" name="clock" size={15} />
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.subtle }}>{student.nextLesson}</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.subtle }}>{nextLesson}</Text>
         </View>
         <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12, marginBottom: 6 }}>
           <Text style={{ fontSize: 11, fontWeight: "600", color: "#7f8b96" }}>Focus: {student.focus}</Text>

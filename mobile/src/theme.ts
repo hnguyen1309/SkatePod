@@ -21,12 +21,25 @@ export const colors = {
   track: "#e9edef",
 };
 
+import type { DisciplineCategory } from "./data";
+
 export type LessonColor = "teal" | "sand" | "purple";
 
 export const lessonColors: Record<LessonColor, { border: string; bg: string; text: string; dot: string }> = {
   teal: { border: "#72a7aa", bg: "#e6f1f1", text: "#315f64", dot: "#75aeb0" },
   sand: { border: "#bba17d", bg: "#f3eee7", text: "#6e5940", dot: "#b79b73" },
   purple: { border: "#9b8db0", bg: "#efebf3", text: "#625675", dot: "#8e80a7" },
+};
+
+/** One soft color per discipline category, for the discipline badges. */
+export const categoryColors: Record<DisciplineCategory, { bg: string; fg: string }> = {
+  SINGLES: { bg: "#dcebee", fg: "#396972" },
+  SKATING_SKILLS: { bg: "#ede5dc", fg: "#755c44" },
+  ICE_DANCE: { bg: "#e7e2ef", fg: "#685a7e" },
+  PAIRS: { bg: "#f0dfdf", fg: "#805555" },
+  SYNCHRONIZED: { bg: "#e4eadc", fg: "#596a43" },
+  SHOWCASE: { bg: "#dde8f1", fg: "#4d687e" },
+  THEATRE_ON_ICE: { bg: "#f3ead2", fg: "#7a6330" },
 };
 
 export const radius = { sm: 8, md: 12, lg: 16 };

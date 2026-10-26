@@ -19,4 +19,11 @@ public class ApiExceptionHandler {
         problem.setTitle("Not found");
         return problem;
     }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ProblemDetail handleBadRequest(BadRequestException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setTitle("Bad request");
+        return problem;
+    }
 }
