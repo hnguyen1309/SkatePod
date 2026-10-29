@@ -3,6 +3,7 @@ import type { LessonColor } from "./theme";
 export type Tone = { bg: string; fg: string };
 
 export type DisciplineCategory =
+  | "LEARN_TO_SKATE"
   | "SINGLES"
   | "SKATING_SKILLS"
   | "ICE_DANCE"
@@ -12,6 +13,8 @@ export type DisciplineCategory =
   | "THEATRE_ON_ICE";
 
 export type DisciplineId =
+  | "LEARN_TO_SKATE"
+  | "ADULT_LEARN_TO_SKATE"
   | "STANDARD_FREESKATE"
   | "ADULT_FREESKATE"
   | "STANDARD_SKILLS"
@@ -110,6 +113,7 @@ export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
 export const DISCIPLINE_CATEGORIES: { id: DisciplineCategory; name: string }[] = [
+  { id: "LEARN_TO_SKATE", name: "Learn to Skate" },
   { id: "SINGLES", name: "Singles" },
   { id: "SKATING_SKILLS", name: "Skating Skills" },
   { id: "ICE_DANCE", name: "Ice Dance" },
@@ -130,6 +134,14 @@ export type DisciplineInfo = {
 // Every discipline and its levels (US Figure Skating test structure), lowest level first.
 // Same list as backend/.../student/Discipline.java. Change both together.
 export const DISCIPLINES: DisciplineInfo[] = [
+  {
+    id: "LEARN_TO_SKATE", name: "Learn to Skate", shortName: "Learn to Skate", category: "LEARN_TO_SKATE",
+    levels: ["Snowplow Sam 1", "Snowplow Sam 2", "Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5", "Basic 6"],
+  },
+  {
+    id: "ADULT_LEARN_TO_SKATE", name: "Adult Learn to Skate", shortName: "Adult Learn to Skate", category: "LEARN_TO_SKATE",
+    levels: ["Adult Beginner 1", "Adult Beginner 2", "Adult Beginner 3", "Adult Beginner 4", "Adult Beginner 5", "Adult Beginner 6"],
+  },
   {
     id: "STANDARD_FREESKATE", name: "Standard Track (Freeskate)", shortName: "Freeskate", category: "SINGLES",
     levels: ["Pre-Preliminary", "Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold"],
@@ -180,7 +192,7 @@ export function categoryName(id: DisciplineCategory) {
   return DISCIPLINE_CATEGORIES.find((item) => item.id === id)?.name ?? id;
 }
 
-/** Puts disciplines in catalog order (Singles first, then Skating Skills, and so on). */
+/** Puts disciplines in catalog order (Learn to Skate first, then Singles, and so on). */
 export function sortDisciplines(list: StudentDiscipline[]) {
   const position = (item: StudentDiscipline) => DISCIPLINES.findIndex((info) => info.id === item.discipline);
   return [...list].sort((a, b) => position(a) - position(b));

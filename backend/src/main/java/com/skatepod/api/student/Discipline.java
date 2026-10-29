@@ -9,6 +9,10 @@ import java.util.List;
  * This list is copied in the app (DISCIPLINES in mobile/src/data.ts). Change both together.
  */
 public enum Discipline {
+    LEARN_TO_SKATE(DisciplineCategory.LEARN_TO_SKATE, "Learn to Skate",
+            "Snowplow Sam 1", "Snowplow Sam 2", "Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5", "Basic 6"),
+    ADULT_LEARN_TO_SKATE(DisciplineCategory.LEARN_TO_SKATE, "Adult Learn to Skate",
+            "Adult Beginner 1", "Adult Beginner 2", "Adult Beginner 3", "Adult Beginner 4", "Adult Beginner 5", "Adult Beginner 6"),
     STANDARD_FREESKATE(DisciplineCategory.SINGLES, "Standard Track (Freeskate)",
             "Pre-Preliminary", "Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold"),
     ADULT_FREESKATE(DisciplineCategory.SINGLES, "Adult Track (Freeskate)",
