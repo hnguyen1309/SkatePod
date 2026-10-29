@@ -46,8 +46,9 @@ const paths: Record<IconName, ReactNode> = {
   ),
   logo: (
     <>
-      <Path d="M5 16c4.5-1 6.5-4.5 7.5-10 1.7 4 3.8 6.7 6.5 8" />
-      <Path d="M5 16c3.2 1.8 7.8 2.4 14 .2M8 20h8" />
+      {/* Skate boot (open at the ankle) above a blade with a toe pick. Traced from design/logo/skatepod-logo-navy.svg. */}
+      <Path d="M17.75 3.13C15.54 8.05 13.38 10.34 10.7 11.43 7.19 12.75 5.53 14.78 5.6 17.85v.6h15.32v-1.87" />
+      <Path d="M3.08 19.38c.39 1.1 1.15 1.41 1.95 1.51h15.89" />
     </>
   ),
   music: (
