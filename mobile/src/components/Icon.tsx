@@ -20,7 +20,9 @@ export type IconName =
   | "trash"
   | "up"
   | "down"
-  | "close";
+  | "close"
+  | "edit"
+  | "grip";
 
 const paths: Record<IconName, ReactNode> = {
   calendar: (
@@ -96,6 +98,18 @@ const paths: Record<IconName, ReactNode> = {
   up: <Path d="m6 15 6-6 6 6" />,
   down: <Path d="m6 9 6 6 6-6" />,
   close: <Path d="M6 6l12 12M18 6 6 18" />,
+  edit: <Path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />,
+  // Six dots: the usual "drag me" handle.
+  grip: (
+    <>
+      <Circle cx="9" cy="6" r="1" />
+      <Circle cx="15" cy="6" r="1" />
+      <Circle cx="9" cy="12" r="1" />
+      <Circle cx="15" cy="12" r="1" />
+      <Circle cx="9" cy="18" r="1" />
+      <Circle cx="15" cy="18" r="1" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, color = "#53636f" }: { name: IconName; size?: number; color?: string }) {

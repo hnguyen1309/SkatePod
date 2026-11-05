@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { Alert, Linking, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Linking, PanResponder, Text, View } from "react-native";
+import { Icon } from "../components/Icon";
 import { RinkMap } from "../components/RinkMap";
 import { Button, Card, Dropdown, Field, Heading, IconButton, Label, PickerField, Screen, Segmented } from "../components/ui";
 import {
@@ -94,7 +95,7 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
   return (
     <Screen scrollEnabled={scrollEnabled}>
       <Heading
-        description="Select elements, set their skating order, and map the program on the rink."
+        description="Select elements, drag them into skating order, and map the program on the rink."
         eyebrow="Program builder"
         title="Program components"
       />
@@ -134,7 +135,11 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
           <Segmented onChange={setView} options={VIEWS} value={view} />
         </View>
         {view === "Component sheet" ? (
-          <ComponentSheet elements={current.elements} onChange={(elements) => update({ elements })} />
+          <ComponentSheet
+            elements={current.elements}
+            onChange={(elements) => update({ elements })}
+            onDragChange={(dragging) => setScrollEnabled(!dragging)}
+          />
         ) : (
           <RinkMap
             elements={current.elements}
@@ -182,18 +187,54 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
 function ComponentSheet({
   elements,
   onChange,
+  onDragChange,
 }: {
   elements: ProgramElement[];
   onChange: (elements: ProgramElement[]) => void;
+  /** Lets the parent stop page scrolling while a row is being dragged. */
+  onDragChange: (dragging: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
+  // While a row is dragged: where it started, and how far the finger has moved (in pixels).
+  const [drag, setDrag] = useState<{ from: number; dy: number } | null>(null);
+  const rowHeight = useRef(56); // measured from the first row, see onLayout below
 
-  function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= elements.length) return;
+  // Which slot the dragged row would land in if the finger let go now.
+  const targetOf = (from: number, dy: number) =>
+    Math.max(0, Math.min(elements.length - 1, from + Math.round(dy / rowHeight.current)));
+
+  function startDrag(index: number) {
+    setEditing(null); // the list is about to change order, so close any open edit
+    setAdding(false);
+    setDrag({ from: index, dy: 0 });
+    onDragChange(true);
+  }
+
+  function endDrag(from: number, dy: number) {
+    const to = targetOf(from, dy);
+    setDrag(null);
+    onDragChange(false);
+    if (to === from) return;
     const next = [...elements];
-    [next[index], next[target]] = [next[target], next[index]];
+    const [moved] = next.splice(from, 1); // take the element out...
+    next.splice(to, 0, moved); // ...and put it back in its new slot
     onChange(next);
+  }
+
+  // While dragging, the rows between the old and new slot slide one row up or down to make room.
+  function shiftFor(index: number) {
+    if (!drag) return 0;
+    if (index === drag.from) {
+      // Keep the dragged row inside the list.
+      const min = -drag.from * rowHeight.current;
+      const max = (elements.length - 1 - drag.from) * rowHeight.current;
+      return Math.max(min, Math.min(max, drag.dy));
+    }
+    const to = targetOf(drag.from, drag.dy);
+    if (drag.from < to && index > drag.from && index <= to) return -rowHeight.current;
+    if (drag.from > to && index >= to && index < drag.from) return rowHeight.current;
+    return 0;
   }
 
   return (
@@ -205,45 +246,97 @@ function ComponentSheet({
         </View>
       </View>
 
-      <View style={{ borderWidth: 1, borderColor: "#e1e7eb", borderRadius: radius.md, overflow: "hidden", marginBottom: 12 }}>
+      <View style={{ borderWidth: 1, borderColor: "#e1e7eb", borderRadius: radius.md, marginBottom: 12 }}>
         {elements.length ? (
-          elements.map((element, index) => (
-            <View
-              key={`${element.code}-${index}`}
-              style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderTopWidth: index ? 1 : 0, borderTopColor: "#e8edf1" }}
-            >
-              <Text style={{ width: 22, fontSize: 12, fontWeight: "700", color: colors.muted }}>{String(index + 1).padStart(2, "0")}</Text>
-              <Text numberOfLines={1} style={{ minWidth: 48, fontSize: 13, fontWeight: "800", color: colors.tealDark }}>{element.code}</Text>
-              <View style={{ flex: 1 }}>
-                <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>
-                  {element.title}
-                </Text>
-                <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{element.category}</Text>
+          elements.map((element, index) => {
+            const dragged = drag?.from === index;
+            return (
+              <View
+                key={`${element.code}-${index}`}
+                onLayout={index === 0 ? (event) => (rowHeight.current = event.nativeEvent.layout.height) : undefined}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: 10,
+                  paddingLeft: 4,
+                  borderTopWidth: index ? 1 : 0,
+                  borderTopColor: "#e8edf1",
+                  borderRadius: dragged ? radius.md : 0,
+                  backgroundColor: editing === index ? colors.tealSoft : colors.white,
+                  transform: [{ translateY: shiftFor(index) }],
+                  // The dragged row floats above the others with a soft shadow.
+                  zIndex: dragged ? 1 : 0,
+                  shadowColor: "#000",
+                  shadowOpacity: dragged ? 0.15 : 0,
+                  shadowRadius: 8,
+                  shadowOffset: { width: 0, height: 3 },
+                }}
+              >
+                <DragHandle
+                  index={index}
+                  onEnd={endDrag}
+                  onMove={(dy) => setDrag((current) => (current ? { ...current, dy } : current))}
+                  onStart={startDrag}
+                />
+                <Text style={{ width: 22, fontSize: 12, fontWeight: "700", color: colors.muted }}>{String(index + 1).padStart(2, "0")}</Text>
+                <Text numberOfLines={1} style={{ minWidth: 48, fontSize: 13, fontWeight: "800", color: colors.tealDark }}>{element.code}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>
+                    {element.title}
+                  </Text>
+                  <Text style={{ fontSize: 10, color: colors.muted, marginTop: 1 }}>{element.category}</Text>
+                </View>
+                <IconButton
+                  icon="edit"
+                  label="Edit"
+                  onPress={() => {
+                    setAdding(false);
+                    setEditing(index);
+                  }}
+                  size={28}
+                />
+                <IconButton
+                  background={colors.dangerSoft}
+                  color={colors.danger}
+                  icon="close"
+                  label="Remove"
+                  onPress={() => {
+                    setEditing(null); // the numbers below this row change, so close any open edit
+                    onChange(elements.filter((_, itemIndex) => itemIndex !== index));
+                  }}
+                  size={28}
+                />
               </View>
-              <IconButton icon="up" label="Move up" onPress={() => move(index, -1)} size={28} />
-              <IconButton icon="down" label="Move down" onPress={() => move(index, 1)} size={28} />
-              <IconButton
-                background={colors.dangerSoft}
-                color={colors.danger}
-                icon="close"
-                label="Remove"
-                onPress={() => onChange(elements.filter((_, itemIndex) => itemIndex !== index))}
-                size={28}
-              />
-            </View>
-          ))
+            );
+          })
         ) : (
           <Text style={{ padding: 20, textAlign: "center", fontSize: 13, color: colors.muted }}>Tap Add element to begin the sheet.</Text>
         )}
       </View>
 
-      {adding ? (
-        <AddElementPanel
-          onAdd={(element) => {
+      {editing !== null && elements[editing] ? (
+        // key opens a fresh panel when the coach taps Edit on a different row
+        <ElementPanel
+          initial={elements[editing]}
+          key={editing}
+          onCancel={() => setEditing(null)}
+          onSave={(element) => {
+            onChange(elements.map((item, itemIndex) => (itemIndex === editing ? element : item)));
+            setEditing(null);
+          }}
+          saveLabel="Save"
+          title={`Edit element ${String(editing + 1).padStart(2, "0")}`}
+        />
+      ) : adding ? (
+        <ElementPanel
+          onCancel={() => setAdding(false)}
+          onSave={(element) => {
             onChange([...elements, element]);
             setAdding(false);
           }}
-          onCancel={() => setAdding(false)}
+          saveLabel="Add"
+          title="Add element"
         />
       ) : (
         <Button icon="plus" label="Add element" onPress={() => setAdding(true)} variant="secondary" />
@@ -252,18 +345,76 @@ function ComponentSheet({
   );
 }
 
-// Adding works like U.S. Figure Skating's PPC form: pick a type, then an element of that type,
-// then Add. New elements go to the end of the list, so add them in skating order.
-function AddElementPanel({ onAdd, onCancel }: { onAdd: (element: ProgramElement) => void; onCancel: () => void }) {
-  const [type, setType] = useState<ElementType | null>(null);
-  const [code, setCode] = useState<string | null>(null);
-  const [jumps, setJumps] = useState<(string | null)[]>([]);
+// The six-dot handle on the left of each row. Press and drag it up or down to change the
+// skating order. Only the handle starts a drag, so the rest of the page still scrolls normally.
+function DragHandle({
+  index,
+  onStart,
+  onMove,
+  onEnd,
+}: {
+  index: number;
+  onStart: (index: number) => void;
+  onMove: (dy: number) => void;
+  onEnd: (index: number, dy: number) => void;
+}) {
+  // The responder is made once, so it reads the newest props through this ref (same trick as RinkMap).
+  const latest = useRef({ index, onStart, onMove, onEnd });
+  latest.current = { index, onStart, onMove, onEnd };
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false, // don't let the page's scroll steal the drag
+      onPanResponderGrant: () => latest.current.onStart(latest.current.index),
+      onPanResponderMove: (_event, gesture) => latest.current.onMove(gesture.dy),
+      onPanResponderRelease: (_event, gesture) => latest.current.onEnd(latest.current.index, gesture.dy),
+      onPanResponderTerminate: (_event, gesture) => latest.current.onEnd(latest.current.index, gesture.dy),
+    }),
+  ).current;
+
+  return (
+    <View
+      {...responder.panHandlers}
+      accessibilityHint="Drag up or down to change the order"
+      accessibilityLabel="Reorder"
+      hitSlop={6}
+      style={{ width: 24, height: 36, alignItems: "center", justifyContent: "center" }}
+    >
+      <Icon color={colors.muted} name="grip" size={18} />
+    </View>
+  );
+}
+
+// Adding and editing work like U.S. Figure Skating's PPC form: pick a type, then an element
+// of that type, then Add (or Save). New elements go to the end; drag them into skating order.
+// When editing, `initial` fills the dropdowns with the element's current values.
+function ElementPanel({
+  initial,
+  title,
+  saveLabel,
+  onSave,
+  onCancel,
+}: {
+  initial?: ProgramElement;
+  title: string;
+  saveLabel: string;
+  onSave: (element: ProgramElement) => void;
+  onCancel: () => void;
+}) {
+  // A saved combination has a code like "1T+1Eu+1S", so split it back into its jumps.
+  const initialJumps = initial?.code.includes("+") ? initial.code.split("+") : [];
+  const initialCombination = Object.keys(COMBINATIONS).find((name) => COMBINATIONS[name] === initialJumps.length);
+  const [type, setType] = useState<ElementType | null>(initial ? typeOf(initial) : null);
+  const [code, setCode] = useState<string | null>(initialCombination ?? initial?.code ?? null);
+  const [jumps, setJumps] = useState<(string | null)[]>(initialCombination ? initialJumps : []);
   const choices = type ? ELEMENT_CATALOG.filter((element) => typeOf(element) === type) : [];
   const jumpCount = code ? COMBINATIONS[code] : undefined;
   const options = [...choices.map((element) => element.code), ...(type === "Jumps" ? Object.keys(COMBINATIONS) : [])];
   const titleOf = (value: string) => [...ELEMENT_CATALOG, HALF_LOOP].find((element) => element.code === value)?.title ?? value;
 
-  // What Add will save: a single element, or one combination element once every jump is picked.
+  // What Add/Save will keep: a single element, or one combination element once every jump is picked.
   const picked = jumps.filter((jump): jump is string => Boolean(jump));
   const chosen: ProgramElement | undefined = jumpCount
     ? picked.length === jumpCount
@@ -273,6 +424,7 @@ function AddElementPanel({ onAdd, onCancel }: { onAdd: (element: ProgramElement)
 
   return (
     <View style={{ borderWidth: 1, borderColor: "#d6e5e6", borderRadius: radius.md, padding: 14, backgroundColor: "#f7fbfb" }}>
+      <Label>{title}</Label>
       <Dropdown
         label="Type"
         onChange={(next) => {
@@ -310,7 +462,7 @@ function AddElementPanel({ onAdd, onCancel }: { onAdd: (element: ProgramElement)
       ))}
       <View style={{ flexDirection: "row", gap: 10 }}>
         <Button label="Cancel" onPress={onCancel} style={{ flex: 1 }} variant="secondary" />
-        <Button disabled={!chosen} label="Add" onPress={() => chosen && onAdd(chosen)} style={{ flex: 1 }} />
+        <Button disabled={!chosen} label={saveLabel} onPress={() => chosen && onSave(chosen)} style={{ flex: 1 }} />
       </View>
     </View>
   );
