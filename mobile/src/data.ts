@@ -87,6 +87,29 @@ export const TRACK_LEVELS = {
 export type Track = keyof typeof TRACK_LEVELS;
 export const TRACKS = Object.keys(TRACK_LEVELS) as Track[];
 
+// Official U.S. Figure Skating links. We link to their charts instead of copying the rules,
+// because the rules change during the season. Check these links and update the date below
+// whenever the charts change (each new season at the latest).
+export const REQUIREMENTS_SEASON = "2026-27";
+export const REQUIREMENTS_CHECKED = "Oct 31, 2026";
+export const REQUIREMENTS_PAGE_URL = "https://usfigureskating.org/sports/2025/8/12/competition-program-requirements.aspx";
+
+const SINGLES_SHORT_PROGRAM_URL = "https://usfigureskating.org/documents/2025/12/19/2026-27_Singles_SP_Chart.pdf";
+const SINGLES_FREE_SKATE_URL = "https://usfigureskating.org/documents/2026/6/2/2026-27_Singles_FS_Chart.pdf";
+const ADULT_SINGLES_URL = "https://usfigureskating.org/documents/2026/7/7/2026-2027_Adult_Singles_WBP.pdf";
+
+export type RequirementLink = { label: string; url: string };
+
+/** The official charts for a track and level. Aspire returns none, so the screen only shows the main page. */
+export function requirementLinks(track: Track, level: string): RequirementLink[] {
+  if (track === "Adult") return [{ label: "Adult requirements", url: ADULT_SINGLES_URL }];
+  if (track !== "Championship") return [];
+  const freeSkate = { label: "Free Skate requirements", url: SINGLES_FREE_SKATE_URL };
+  // The short program starts at Juvenile, so lower levels only have a free skate.
+  const hasShortProgram = ["Juvenile", "Intermediate", "Novice", "Junior", "Senior"].includes(level);
+  return hasShortProgram ? [{ label: "Short Program requirements", url: SINGLES_SHORT_PROGRAM_URL }, freeSkate] : [freeSkate];
+}
+
 export type ProgramData = {
   musicTitle: string;
   artist: string;
@@ -271,36 +294,60 @@ export const SAMPLE_SETTINGS: Settings = {
   sharedNotes: true,
 };
 
-type CatalogItem = ProgramElement & { minimum: Record<Track, number> };
+// Every jump from single to quad: 1T, 1S, 1Lo, 1F, 1Lz, 1A, then 2T ... up to 4A.
+// Built in a loop so the list can't miss one. Names are written the way EMS shows them.
+const JUMP_KINDS = [
+  ["T", "Toe Loop"], ["S", "Salchow"], ["Lo", "Loop"], ["F", "Flip"], ["Lz", "Lutz"], ["A", "Axel"],
+] as const;
+const ROTATIONS = ["Single", "Double", "Triple", "Quad"] as const;
+const JUMPS: ProgramElement[] = ROTATIONS.flatMap((rotation, index) =>
+  JUMP_KINDS.map(([code, name]) => ({
+    code: `${index + 1}${code}`,
+    title: `${rotation} ${name}`,
+    category: "Jump" as const,
+  })),
+);
 
-export const ELEMENT_CATALOG: CatalogItem[] = [
-  { code: "1T", title: "Single toe loop", category: "Jump", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "1S", title: "Single salchow", category: "Jump", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "1Lo", title: "Single loop", category: "Jump", minimum: { Championship: 0, Aspire: 1, Adult: 0 } },
-  { code: "1F", title: "Single flip", category: "Jump", minimum: { Championship: 0, Aspire: 1, Adult: 1 } },
-  { code: "1Lz", title: "Single lutz", category: "Jump", minimum: { Championship: 0, Aspire: 2, Adult: 1 } },
-  { code: "1A", title: "Axel", category: "Jump", minimum: { Championship: 1, Aspire: 3, Adult: 2 } },
-  { code: "2S", title: "Double salchow", category: "Jump", minimum: { Championship: 2, Aspire: 4, Adult: 3 } },
-  { code: "2T", title: "Double toe loop", category: "Jump", minimum: { Championship: 2, Aspire: 4, Adult: 3 } },
-  { code: "2Lo", title: "Double loop", category: "Jump", minimum: { Championship: 3, Aspire: 4, Adult: 4 } },
-  { code: "2F", title: "Double flip", category: "Jump", minimum: { Championship: 4, Aspire: 4, Adult: 4 } },
-  { code: "2Lz", title: "Double lutz", category: "Jump", minimum: { Championship: 4, Aspire: 4, Adult: 4 } },
-  { code: "2A", title: "Double axel", category: "Jump", minimum: { Championship: 5, Aspire: 4, Adult: 5 } },
-  { code: "USp", title: "Upright spin", category: "Spin", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "SSp", title: "Sit spin", category: "Spin", minimum: { Championship: 0, Aspire: 1, Adult: 0 } },
-  { code: "CSp", title: "Camel spin", category: "Spin", minimum: { Championship: 1, Aspire: 2, Adult: 1 } },
-  { code: "CCoSp", title: "Change-foot combination spin", category: "Spin", minimum: { Championship: 2, Aspire: 3, Adult: 2 } },
-  { code: "FCSp", title: "Flying camel spin", category: "Spin", minimum: { Championship: 3, Aspire: 4, Adult: 3 } },
-  { code: "StSq", title: "Step sequence", category: "Sequence", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "ChSq", title: "Choreographic sequence", category: "Choreography", minimum: { Championship: 1, Aspire: 1, Adult: 1 } },
-  { code: "SpSq", title: "Spiral sequence", category: "Choreography", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
+// Spins in the same order and wording as U.S. Figure Skating's PPC form (EMS), with their ISU codes.
+const SPINS: ProgramElement[] = [
+  { code: "USp", title: "Upright Spin" },
+  { code: "LSp", title: "Layback Spin" },
+  { code: "CSp", title: "Camel Spin" },
+  { code: "SSp", title: "Sit Spin" },
+  { code: "FUSp", title: "Flying Upright Spin" },
+  { code: "FLSp", title: "Flying Layback Spin" },
+  { code: "FCSp", title: "Flying Camel Spin" },
+  { code: "FSSp", title: "Flying Sit Spin" },
+  { code: "CUSp", title: "Change Foot Upright Spin" },
+  { code: "CLSp", title: "Change Foot Layback Spin" },
+  { code: "CCSp", title: "Change Foot Camel Spin" },
+  { code: "CSSp", title: "Change Foot Sit Spin" },
+  { code: "CoSp", title: "Spin Combo with change of position and no change of foot" },
+  { code: "CCoSp", title: "Spin Combo with change of position and change of foot" },
+  { code: "FCoSp", title: "Spin Combo with change of position, no change of foot and flying entry" },
+  { code: "FCCoSp", title: "Spin Combo with change of position and change of foot and flying entry" },
+  { code: "FCCSp", title: "Change Foot Camel Spin with Flying Entry" },
+  { code: "FCSSp", title: "Change Foot Sit Spin with Flying Entry" },
+  { code: "FCUSp", title: "Change Foot Upright Spin with Flying Entry" },
+  { code: "FCLSp", title: "Change Foot Layback Spin with Flying Entry" },
+  { code: "2FtUSp", title: "Two-Foot Upright Spin" },
+].map((spin) => ({ ...spin, category: "Spin" as const }));
+
+// Every element is available at every level: requirements change by season and have exceptions.
+export const ELEMENT_CATALOG: ProgramElement[] = [
+  ...JUMPS,
+  ...SPINS,
+  // Steps & Spirals, in the same order as EMS. The choreographic step sequence (ChSt) was
+  // dropped: the 2026-27 U.S. Figure Skating charts no longer use it.
+  { code: "ChSq", title: "Choreographic Sequence", category: "Choreography" },
+  { code: "StSq", title: "Step Sequence", category: "Sequence" },
 ];
 
 export const STARTER_ELEMENTS: ProgramElement[] = [
-  { code: "1A", title: "Axel", category: "Jump" },
-  { code: "2S", title: "Double salchow", category: "Jump" },
-  { code: "CCoSp", title: "Change-foot combination spin", category: "Spin" },
-  { code: "StSq", title: "Step sequence", category: "Sequence" },
+  { code: "1A", title: "Single Axel", category: "Jump" },
+  { code: "2S", title: "Double Salchow", category: "Jump" },
+  { code: "CCoSp", title: "Spin Combo with change of position and change of foot", category: "Spin" },
+  { code: "StSq", title: "Step Sequence", category: "Sequence" },
 ];
 
 export const DEFAULT_PROGRAM: ProgramData = {
@@ -313,14 +360,6 @@ export const DEFAULT_PROGRAM: ProgramData = {
   paths: [],
   placements: [],
 };
-
-export function eligibleElements(track: Track, level: string): ProgramElement[] {
-  const levels = TRACK_LEVELS[track] as readonly string[];
-  const levelIndex = Math.max(0, levels.indexOf(level));
-  return ELEMENT_CATALOG.filter((item) => item.minimum[track] <= levelIndex).map(
-    ({ code, title, category }) => ({ code, title, category }),
-  );
-}
 
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
