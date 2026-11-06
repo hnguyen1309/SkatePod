@@ -42,7 +42,7 @@ export type Lesson = {
   id: string;
   studentId: string;
   day: number; // 0 = Monday ... 6 = Sunday (weekly schedule)
-  start: number; // minutes after midnight, e.g. 9:30 AM = 570 (any time, in 15-minute steps)
+  start: number; // minutes after midnight, e.g. 9:30 AM = 570 (any minute, e.g. 6:32 AM = 392)
   type: string;
   duration: number; // minutes
   color: LessonColor;
@@ -167,10 +167,9 @@ export type Settings = {
   sharedNotes: boolean;
 };
 
-// The calendar shows these hours; lessons can start at any 15 minutes in between.
+// The calendar shows these hours; lessons can start at any minute in between.
 export const FIRST_HOUR = 6; // 6 AM
 export const LAST_HOUR = 22; // 10 PM (the calendar ends here)
-export const MINUTE_STEPS = [0, 15, 30, 45] as const;
 
 /** 570 → "9:30 AM", 780 → "1:00 PM". */
 export function formatTime(minutes: number) {

@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { Alert, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
-import { Button, Card, Dropdown, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
+import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
   FIRST_HOUR,
   FULL_WEEKDAYS,
   LAST_HOUR,
   LESSON_TYPES,
-  MINUTE_STEPS,
   WEEKDAYS,
   findBlockOverlap,
   findClash,
@@ -353,9 +353,18 @@ function LessonEditor({
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(studentIds[0] ?? "");
   const [day, setDay] = useState(WEEKDAYS[defaultDay]);
+  // Start, end and duration stay in sync: change the start and the end moves with it (same length);
+  // change the end or the duration and the other one updates.
   const [start, setStart] = useState(defaultStart);
+  const [duration, setDuration] = useState(defaultDuration);
+  const [durationText, setDurationText] = useState(String(defaultDuration));
   const [type, setType] = useState(LESSON_TYPES[0]);
-  const [duration, setDuration] = useState(String(defaultDuration));
+  const end = start + duration;
+
+  function changeDuration(minutes: number) {
+    setDuration(minutes);
+    setDurationText(String(minutes));
+  }
   const [color, setColor] = useState<LessonColor>("teal");
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? id;
 
@@ -364,15 +373,16 @@ function LessonEditor({
       Alert.alert("Add a student first", "Lessons need a student. Add one on the Students tab.");
       return;
     }
-    const lesson: Lesson = {
-      id: newId(),
-      studentId,
-      day: WEEKDAYS.indexOf(day),
-      start,
-      type,
-      duration: Math.max(5, Number.parseInt(duration, 10) || 45),
-      color,
-    };
+    if (duration < 5) {
+      Alert.alert("Check the times", "The end time needs to be at least 5 minutes after the start.");
+      return;
+    }
+    const outside = calendarHoursProblem(start, end);
+    if (outside) {
+      Alert.alert("Outside calendar hours", outside);
+      return;
+    }
+    const lesson: Lesson = { id: newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -403,9 +413,23 @@ function LessonEditor({
         <Text style={{ color: colors.muted, marginBottom: 16 }}>You don’t have any students yet.</Text>
       )}
       <PickerField label="Day" onChange={setDay} options={WEEKDAYS} value={day} />
-      <TimePicker label="Start time" onChange={setStart} value={start} />
+      <TimeRange
+        end={end}
+        onChangeEnd={(minutes) => changeDuration(Math.max(0, minutes - start))}
+        onChangeStart={setStart}
+        start={start}
+      />
+      <Field
+        keyboardType="number-pad"
+        label="Duration (minutes)"
+        onChangeText={(text) => {
+          setDurationText(text);
+          const minutes = Number.parseInt(text, 10);
+          if (minutes > 0) setDuration(minutes); // the end time follows as you type
+        }}
+        value={durationText}
+      />
       <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
-      <Field keyboardType="number-pad" label="Duration (minutes)" onChangeText={setDuration} value={duration} />
       <PickerField
         label="Color"
         onChange={setColor}
@@ -560,29 +584,81 @@ function LessonBlock({
   );
 }
 
-// Picks a time in 15-minute steps: an hour from a dropdown, then the minutes.
-// Lessons can start at any time; nothing is tied to rink session times.
-function TimePicker({ label, value, onChange, lastHour = LAST_HOUR - 1 }: { label: string; value: number; onChange: (minutes: number) => void; lastHour?: number }) {
-  const hours = Array.from({ length: lastHour - FIRST_HOUR + 1 }, (_, index) => formatHour(FIRST_HOUR + index));
-  const hour = Math.floor(value / 60);
-  const minute = value % 60;
-  const minuteLabels = MINUTE_STEPS.map((step) => `:${String(step).padStart(2, "0")}`);
-  return (
-    <View>
-      <Dropdown
-        label={label}
-        onChange={(next) => onChange((FIRST_HOUR + hours.indexOf(next)) * 60 + minute)}
-        options={hours}
-        value={formatHour(hour)}
-      />
-      <View style={{ marginTop: -8, marginBottom: 16 }}>
-        <Segmented
-          onChange={(next) => onChange(hour * 60 + Number(next.slice(1)))}
-          options={minuteLabels}
-          value={`:${String(minute).padStart(2, "0")}`}
-        />
+// The calendar only draws 6 AM to 10 PM, so lessons and blocks have to fit inside it.
+function calendarHoursProblem(start: number, end: number) {
+  if (start < FIRST_HOUR * 60 || end > LAST_HOUR * 60) {
+    return `The calendar shows ${formatHour(FIRST_HOUR)} to ${formatHour(LAST_HOUR)}. Pick times inside those hours.`;
+  }
+  return null;
+}
+
+// Start and end side by side, like the iPhone Calendar app. Tap one to open the iOS time wheel under it
+// (any minute, e.g. 6:32). The wheel opens inline because a pop-up can't open on top of a Sheet on iOS.
+function TimeRange({
+  start,
+  end,
+  onChangeStart,
+  onChangeEnd,
+}: {
+  start: number;
+  end: number;
+  onChangeStart: (minutes: number) => void;
+  onChangeEnd: (minutes: number) => void;
+}) {
+  const [open, setOpen] = useState<"start" | "end" | null>(null);
+  const field = (which: "start" | "end", label: string, minutes: number) => {
+    const active = open === which;
+    return (
+      <View style={{ flex: 1 }}>
+        <Label>{label}</Label>
+        <Pressable
+          accessibilityLabel={`${label}, ${formatTime(minutes)}`}
+          accessibilityRole="button"
+          onPress={() => setOpen(active ? null : which)}
+          style={{
+            borderWidth: 1,
+            borderColor: active ? colors.teal : colors.border,
+            borderRadius: radius.md,
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            backgroundColor: colors.white,
+          }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: "600", color: active ? colors.tealDark : colors.text }}>{formatTime(minutes)}</Text>
+        </Pressable>
       </View>
+    );
+  };
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        {field("start", "Start time", start)}
+        {field("end", "End time", end)}
+      </View>
+      {open ? (
+        <TimeWheel
+          key={open}
+          minutes={open === "start" ? start : end}
+          onChange={open === "start" ? onChangeStart : onChangeEnd}
+        />
+      ) : null}
     </View>
+  );
+}
+
+// The native iOS wheel (hours, minutes, AM/PM). Works in Expo Go.
+function TimeWheel({ minutes, onChange }: { minutes: number; onChange: (minutes: number) => void }) {
+  const value = new Date();
+  value.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+  return (
+    <DateTimePicker
+      display="spinner"
+      minuteInterval={1}
+      mode="time"
+      onChange={(_event, date) => date && onChange(date.getHours() * 60 + date.getMinutes())}
+      style={{ alignSelf: "stretch" }}
+      value={value}
+    />
   );
 }
 
@@ -607,6 +683,11 @@ function AvailabilitySheet({
     const block: AvailabilityBlock = { id: newId(), day: WEEKDAYS.indexOf(day), start, end, place: place.trim() || undefined };
     if (end <= start) {
       Alert.alert("Check the times", "The end time needs to be after the start time.");
+      return;
+    }
+    const outside = calendarHoursProblem(start, end);
+    if (outside) {
+      Alert.alert("Outside calendar hours", outside);
       return;
     }
     const overlap = findBlockOverlap(block, blocks);
@@ -655,8 +736,7 @@ function AvailabilitySheet({
 
       <Label>Add a block</Label>
       <PickerField label="Day" onChange={setDay} options={WEEKDAYS} value={day} />
-      <TimePicker label="From" onChange={setStart} value={start} />
-      <TimePicker label="To" lastHour={LAST_HOUR} onChange={(minutes) => setEnd(Math.min(minutes, LAST_HOUR * 60))} value={end} />
+      <TimeRange end={end} onChangeEnd={setEnd} onChangeStart={setStart} start={start} />
       <Field label="Place (optional)" onChangeText={setPlace} placeholder="e.g. North Rink" value={place} />
       <Button icon="plus" label="Add block" onPress={add} variant="secondary" />
     </Sheet>
