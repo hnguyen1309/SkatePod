@@ -72,38 +72,63 @@ export type ProgramElement = {
 export type RinkPoint = { x: number; y: number };
 export type RinkPlacement = RinkPoint & { code: string; id: string };
 
+// Singles competition tracks and levels, named as in U.S. Figure Skating's 2026-27 charts.
+// (Aspire is a synchronized skating level, not a singles track, so it isn't here.)
 export const TRACK_LEVELS = {
+  // The main competitive pathway. Juvenile and up can qualify for nationals.
   Championship: [
     "Pre-Preliminary", "Preliminary", "Pre-Juvenile", "Juvenile",
     "Intermediate", "Novice", "Junior", "Senior",
   ],
-  Aspire: ["Aspire 1", "Aspire 2", "Aspire 3", "Aspire 4"],
+  // Excel is for skaters who compete for fun and growth with simpler rules. The "Plus"
+  // levels sit between two regular levels and allow a few more difficult elements.
+  Excel: [
+    "Excel Pre-Preliminary", "Excel Preliminary Plus", "Excel Pre-Juvenile Plus",
+    "Excel Juvenile", "Excel Juvenile Plus", "Excel Intermediate", "Excel Intermediate Plus",
+    "Excel Novice", "Excel Junior", "Excel Senior",
+  ],
+  // Adults have their own levels. The "Championship" ones are the qualifying events
+  // (sectionals and adult nationals), and they use the same chart as the level without it.
   Adult: [
-    "Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Adult Gold",
-    "Masters Intermediate-Novice", "Masters Junior-Senior",
+    "Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Championship Adult Silver",
+    "Adult Gold", "Championship Adult Gold",
+    "Masters Intermediate-Novice", "Championship Masters Intermediate-Novice",
+    "Masters Junior-Senior", "Championship Masters Junior-Senior",
   ],
 } as const;
 
 export type Track = keyof typeof TRACK_LEVELS;
 export const TRACKS = Object.keys(TRACK_LEVELS) as Track[];
 
+/**
+ * Programs saved on the phone before Excel replaced Aspire can have a track or level
+ * that no longer exists. This swaps them for the first valid one so the screen can't break.
+ */
+export function validTrackAndLevel(track: string, level: string): { track: Track; level: string } {
+  const safeTrack = (TRACKS as string[]).includes(track) ? (track as Track) : TRACKS[0];
+  const levels = TRACK_LEVELS[safeTrack] as readonly string[];
+  return { track: safeTrack, level: levels.includes(level) ? level : levels[0] };
+}
+
 // Official U.S. Figure Skating links. We link to their charts instead of copying the rules,
 // because the rules change during the season. Check these links and update the date below
 // whenever the charts change (each new season at the latest).
 export const REQUIREMENTS_SEASON = "2026-27";
-export const REQUIREMENTS_CHECKED = "Oct 31, 2026";
+export const REQUIREMENTS_CHECKED = "Nov 5, 2026";
 export const REQUIREMENTS_PAGE_URL = "https://usfigureskating.org/sports/2025/8/12/competition-program-requirements.aspx";
 
 const SINGLES_SHORT_PROGRAM_URL = "https://usfigureskating.org/documents/2025/12/19/2026-27_Singles_SP_Chart.pdf";
 const SINGLES_FREE_SKATE_URL = "https://usfigureskating.org/documents/2026/6/2/2026-27_Singles_FS_Chart.pdf";
 const ADULT_SINGLES_URL = "https://usfigureskating.org/documents/2026/7/7/2026-2027_Adult_Singles_WBP.pdf";
+// Excel runs on the calendar year, so the 2027 chart covers Jan 1 to Dec 31, 2027.
+const EXCEL_FREE_SKATE_URL = "https://usfigureskating.org/documents/2026/10/6/2027_Excel_Free_Skate_Requirements.pdf";
 
 export type RequirementLink = { label: string; url: string };
 
-/** The official charts for a track and level. Aspire returns none, so the screen only shows the main page. */
+/** The official charts for a track and level. */
 export function requirementLinks(track: Track, level: string): RequirementLink[] {
   if (track === "Adult") return [{ label: "Adult requirements", url: ADULT_SINGLES_URL }];
-  if (track !== "Championship") return [];
+  if (track === "Excel") return [{ label: "Excel requirements (2027)", url: EXCEL_FREE_SKATE_URL }];
   const freeSkate = { label: "Free Skate requirements", url: SINGLES_FREE_SKATE_URL };
   // The short program starts at Juvenile, so lower levels only have a free skate.
   const hasShortProgram = ["Juvenile", "Intermediate", "Novice", "Junior", "Senior"].includes(level);

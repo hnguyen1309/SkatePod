@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Linking, PanResponder, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { RinkMap } from "../components/RinkMap";
-import { Button, Card, Dropdown, Field, Heading, IconButton, Label, PickerField, Screen, Segmented } from "../components/ui";
+import { Button, Card, Dropdown, Field, Heading, IconButton, Label, Screen, Segmented } from "../components/ui";
 import {
   DEFAULT_PROGRAM,
   ELEMENT_CATALOG,
@@ -12,6 +12,7 @@ import {
   TRACKS,
   TRACK_LEVELS,
   requirementLinks,
+  validTrackAndLevel,
   type ProgramData,
   type ProgramElement,
   type Track,
@@ -46,7 +47,8 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
   const [view, setView] = useState<View_>("Component sheet");
   const [scrollEnabled, setScrollEnabled] = useState(true);
 
-  const current: ProgramData = { ...DEFAULT_PROGRAM, ...programs[studentId] };
+  const saved: ProgramData = { ...DEFAULT_PROGRAM, ...programs[studentId] };
+  const current: ProgramData = { ...saved, ...validTrackAndLevel(saved.track, saved.level) };
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? "Student";
 
   useEffect(() => {
@@ -100,16 +102,17 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
         title="Program components"
       />
 
-      <PickerField label="Student" onChange={setStudentId} options={studentIds} renderLabel={nameOf} value={studentId} />
+      <Dropdown label="Student" onChange={setStudentId} options={studentIds} renderLabel={nameOf} value={studentId} />
 
       <Card style={{ marginBottom: 16 }}>
-        <PickerField
+        {/* Dropdowns instead of chips: long lists (levels, students) were cut off on the right. */}
+        <Dropdown
           label="Track"
           onChange={(track: Track) => update({ track, level: TRACK_LEVELS[track][0] })}
           options={TRACKS}
           value={current.track}
         />
-        <PickerField
+        <Dropdown
           label="Level"
           onChange={(level: string) => update({ level })}
           options={TRACK_LEVELS[current.track] as readonly string[]}
