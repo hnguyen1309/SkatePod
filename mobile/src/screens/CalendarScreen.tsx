@@ -46,6 +46,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [selectedDay, setSelectedDay] = useState(todayIndex());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // Where the coach tapped on the calendar, so the new lesson starts there (like Google Calendar).
+  const [tapped, setTapped] = useState<{ day: number; start: number } | null>(null);
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
   useEffect(() => {
@@ -76,7 +78,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   return (
     <Screen>
-      <Heading description="Add lessons at any time, or set the times you’re available to coach (optional)." eyebrow="Schedule" title="Calendar" />
+      <Heading description="Tap an empty time on the calendar to add a lesson there, or set the times you’re available to coach (optional)." eyebrow="Schedule" title="Calendar" />
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
@@ -172,9 +174,28 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                     </View>
                   ) : null}
                   <View style={{ position: "relative" }}>
-                    {HOURS.map((hour) => (
-                      <View key={hour} style={{ height: ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }} />
-                    ))}
+                    {/* Tap an empty spot to add a lesson there. The time is rounded down to the 15 minutes
+                        under your finger, e.g. tapping just after 4 PM starts the lesson at 4:00. Lessons sit
+                        on top of this, so tapping a lesson still selects it instead. */}
+                    <Pressable
+                      accessibilityHint="Adds a lesson at this time"
+                      accessibilityLabel={`Add a lesson on ${FULL_WEEKDAYS[dayIndex]}`}
+                      onPress={(event) => {
+                        const quarters = Math.floor((event.nativeEvent.locationY / ROW_HEIGHT) * 4);
+                        const start = Math.min(FIRST_HOUR * 60 + quarters * 15, (LAST_HOUR - 1) * 60 + 45);
+                        setSelectedId(null);
+                        setTapped({ day: dayIndex, start });
+                        setEditorOpen(true);
+                      }}
+                    >
+                      {/* pointerEvents="none" so the tap lands on the Pressable itself: then locationY is measured
+                          from the top of the whole column (6 AM), not from the top of one hour row. */}
+                      <View pointerEvents="none">
+                        {HOURS.map((hour) => (
+                          <View key={hour} style={{ height: ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }} />
+                        ))}
+                      </View>
+                    </Pressable>
                     {/* Optional availability blocks sit behind the lessons as a soft shaded area. */}
                     {availability
                       .filter((block) => block.day === dayIndex)
@@ -293,14 +314,19 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
       {editorOpen ? (
         <LessonEditor
-          defaultDay={mode === "Day" ? selectedDay : todayIndex()}
+          defaultDay={tapped?.day ?? (mode === "Day" ? selectedDay : todayIndex())}
+          defaultStart={tapped?.start}
           defaultDuration={settings.lessonLength}
           lessons={lessons}
-          onClose={() => setEditorOpen(false)}
+          onClose={() => {
+            setEditorOpen(false);
+            setTapped(null);
+          }}
           onSave={(lesson) => {
             setLessons((current) => [...current, lesson]);
             setSelectedId(lesson.id);
             setEditorOpen(false);
+            setTapped(null);
           }}
           students={students.map((student) => ({ id: student.id, name: student.name }))}
         />
@@ -317,6 +343,7 @@ function LessonEditor({
   students,
   lessons,
   defaultDay,
+  defaultStart = 9 * 60,
   defaultDuration,
   onClose,
   onSave,
@@ -324,6 +351,7 @@ function LessonEditor({
   students: { id: string; name: string }[];
   lessons: Lesson[];
   defaultDay: number;
+  defaultStart?: number; // minutes after midnight; 9:00 AM when you use the Add button
   defaultDuration: number;
   onClose: () => void;
   onSave: (lesson: Lesson) => void;
@@ -331,7 +359,7 @@ function LessonEditor({
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(studentIds[0] ?? "");
   const [day, setDay] = useState(WEEKDAYS[defaultDay]);
-  const [start, setStart] = useState(9 * 60); // 9:00 AM
+  const [start, setStart] = useState(defaultStart);
   const [type, setType] = useState(LESSON_TYPES[0]);
   const [duration, setDuration] = useState(String(defaultDuration));
   const [color, setColor] = useState<LessonColor>("teal");
