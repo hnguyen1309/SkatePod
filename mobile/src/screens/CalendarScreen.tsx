@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { Button, Card, Dropdown, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
@@ -48,6 +48,21 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [editorOpen, setEditorOpen] = useState(false);
   // Where the coach tapped on the calendar, so the new lesson starts there (like Google Calendar).
   const [tapped, setTapped] = useState<{ day: number; start: number } | null>(null);
+  // While a lesson is being dragged, the page and the week can't scroll, and its day column draws on top.
+  const [draggingDay, setDraggingDay] = useState<number | null>(null);
+
+  // Saves a dragged or resized lesson, unless the new time clashes with another lesson.
+  function moveLesson(lesson: Lesson, changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) {
+    const moved = { ...lesson, ...changes };
+    if (moved.day === lesson.day && moved.start === lesson.start && moved.duration === lesson.duration) return;
+    const clash = findClash(moved, lessons);
+    if (clash) {
+      const name = studentById(clash.studentId)?.name ?? "Another student";
+      Alert.alert("That time is taken", `${name} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)}. The lesson stayed where it was.`);
+      return;
+    }
+    setLessons((current) => current.map((item) => (item.id === lesson.id ? moved : item)));
+  }
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
   useEffect(() => {
@@ -77,8 +92,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
 
   return (
-    <Screen>
-      <Heading description="Tap an empty time on the calendar to add a lesson there, or set the times you’re available to coach (optional)." eyebrow="Schedule" title="Calendar" />
+    <Screen scrollEnabled={draggingDay === null}>
+      <Heading description="Tap an empty time to add a lesson. Tap a lesson, then drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
@@ -131,7 +146,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           </ScrollView>
         ) : null}
 
-        <ScrollView horizontal={mode === "Week"} key={mode} scrollEnabled={mode === "Week"} showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal={mode === "Week"} key={mode} scrollEnabled={mode === "Week" && draggingDay === null} showsHorizontalScrollIndicator={false}>
           <View style={{ flexDirection: "row" }}>
             <View style={{ width: 52 }}>
               <View style={{ height: mode === "Week" ? 52 : 0 }} />
@@ -153,6 +168,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                     borderLeftWidth: 1,
                     borderLeftColor: colors.borderSoft,
                     backgroundColor: day.isToday ? "#f8fbfb" : undefined,
+                    zIndex: draggingDay === dayIndex ? 10 : 0, // a lesson dragged to another day stays visible
                   }}
                 >
                   {mode === "Week" ? (
@@ -225,40 +241,18 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                       ))}
                     {lessons
                       .filter((lesson) => lesson.day === dayIndex)
-                      .map((lesson) => {
-                        const palette = lessonColors[lesson.color];
-                        const student = studentById(lesson.studentId);
-                        const active = lesson.id === selectedId;
-                        return (
-                          <Pressable
-                            accessibilityRole="button"
-                            key={lesson.id}
-                            onPress={() => setSelectedId(lesson.id)}
-                            style={{
-                              position: "absolute",
-                              top: topFor(lesson.start) + 2,
-                              height: Math.max(30, (lesson.duration / 60) * ROW_HEIGHT - 4),
-                              overflow: "hidden",
-                              left: 5,
-                              right: 5,
-                              borderLeftWidth: 3,
-                              borderLeftColor: palette.border,
-                              backgroundColor: palette.bg,
-                              borderRadius: radius.sm,
-                              padding: 7,
-                              borderWidth: active ? 1.5 : 0,
-                              borderColor: active ? palette.border : undefined,
-                            }}
-                          >
-                            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: palette.text }}>
-                              {student?.name.split(" ")[0] ?? "Removed"}
-                            </Text>
-                            <Text numberOfLines={1} style={{ fontSize: 10, color: palette.text, opacity: 0.75, marginTop: 2 }}>
-                              {lesson.type} · {lesson.duration}m
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
+                      .map((lesson) => (
+                        <LessonBlock
+                          active={lesson.id === selectedId}
+                          dayWidth={mode === "Week" ? DAY_WIDTH : 0}
+                          key={lesson.id}
+                          lesson={lesson}
+                          name={studentById(lesson.studentId)?.name.split(" ")[0] ?? "Removed"}
+                          onDragChange={(dragging) => setDraggingDay(dragging ? lesson.day : null)}
+                          onMove={(changes) => moveLesson(lesson, changes)}
+                          onSelect={() => setSelectedId(lesson.id)}
+                        />
+                      ))}
                   </View>
                 </View>
               );
@@ -420,6 +414,149 @@ function LessonEditor({
         value={color}
       />
     </Sheet>
+  );
+}
+
+// One lesson on the grid. Tap it to select it. Once it's selected (it gets a border and a small handle
+// at the bottom), drag it to move it, or drag the handle to change its length, like Google Calendar.
+// Unselected lessons ignore drags, so swiping over them still scrolls the calendar.
+// Everything snaps to 15 minutes. In Week view you can also drag a lesson sideways to another day.
+function LessonBlock({
+  lesson,
+  name,
+  active,
+  dayWidth,
+  onSelect,
+  onMove,
+  onDragChange,
+}: {
+  lesson: Lesson;
+  name: string;
+  active: boolean;
+  dayWidth: number; // 0 in Day view, where lessons can only move up and down
+  onSelect: () => void;
+  onMove: (changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) => void;
+  onDragChange: (dragging: boolean) => void;
+}) {
+  // How far the finger has moved while dragging, in pixels; null when not dragging.
+  const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
+  const [stretch, setStretch] = useState<number | null>(null);
+  // The responders are made once, so they read the newest props through this ref (same trick as RinkMap).
+  const latest = useRef({ lesson, active, dayWidth, onMove, onDragChange });
+  latest.current = { lesson, active, dayWidth, onMove, onDragChange };
+
+  const snap = (pixels: number) => Math.round(((pixels / ROW_HEIGHT) * 60) / 15) * 15; // pixels → minutes, in 15s
+
+  // Where the lesson would land for a drag of (dx, dy), kept inside the calendar's hours and days.
+  function landing(dx: number, dy: number) {
+    const { lesson: current, dayWidth: width } = latest.current;
+    const day = width ? Math.max(0, Math.min(6, current.day + Math.round(dx / width))) : current.day;
+    const start = Math.max(FIRST_HOUR * 60, Math.min(LAST_HOUR * 60 - current.duration, current.start + snap(dy)));
+    return { day, start };
+  }
+  function stretched(dy: number) {
+    const { lesson: current } = latest.current;
+    return Math.max(15, Math.min(LAST_HOUR * 60 - current.start, current.duration + snap(dy)));
+  }
+
+  const mover = useRef(
+    PanResponder.create({
+      // Only a selected lesson can be dragged, and only once the finger actually moves,
+      // so a plain tap still selects it.
+      onStartShouldSetPanResponder: () => false,
+      // "Capture" asks this view before the Pressable inside it, so a drag can take over from a tap.
+      onMoveShouldSetPanResponderCapture: (_event, gesture) => latest.current.active && Math.abs(gesture.dx) + Math.abs(gesture.dy) > 4,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => latest.current.onDragChange(true),
+      onPanResponderMove: (_event, gesture) => setMove({ dx: gesture.dx, dy: gesture.dy }),
+      onPanResponderRelease: (_event, gesture) => {
+        setMove(null);
+        latest.current.onDragChange(false);
+        latest.current.onMove(landing(gesture.dx, gesture.dy));
+      },
+      onPanResponderTerminate: () => {
+        setMove(null);
+        latest.current.onDragChange(false);
+      },
+    }),
+  ).current;
+
+  const resizer = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => latest.current.onDragChange(true),
+      onPanResponderMove: (_event, gesture) => setStretch(gesture.dy),
+      onPanResponderRelease: (_event, gesture) => {
+        setStretch(null);
+        latest.current.onDragChange(false);
+        latest.current.onMove({ duration: stretched(gesture.dy) });
+      },
+      onPanResponderTerminate: () => {
+        setStretch(null);
+        latest.current.onDragChange(false);
+      },
+    }),
+  ).current;
+
+  // While dragging, show the lesson where it will land (snapped), so the coach sees the exact time.
+  const preview = move ? landing(move.dx, move.dy) : { day: lesson.day, start: lesson.start };
+  const duration = stretch !== null ? stretched(stretch) : lesson.duration;
+  const palette = lessonColors[lesson.color];
+  const dragging = move !== null || stretch !== null;
+
+  return (
+    <View
+      {...mover.panHandlers}
+      style={{
+        position: "absolute",
+        top: topFor(preview.start) + 2,
+        height: Math.max(30, (duration / 60) * ROW_HEIGHT - 4),
+        left: 5 + (preview.day - lesson.day) * dayWidth,
+        right: 5 - (preview.day - lesson.day) * dayWidth,
+        zIndex: dragging ? 5 : active ? 2 : 1,
+        opacity: dragging ? 0.9 : 1,
+        shadowColor: "#000",
+        shadowOpacity: dragging ? 0.18 : 0,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 3 },
+      }}
+    >
+      <Pressable
+        accessibilityHint={active ? "Drag to move, or drag the bottom handle to change the length" : "Selects the lesson"}
+        accessibilityRole="button"
+        onPress={onSelect}
+        style={{
+          flex: 1,
+          overflow: "hidden",
+          borderLeftWidth: 3,
+          borderLeftColor: palette.border,
+          backgroundColor: palette.bg,
+          borderRadius: radius.sm,
+          padding: 7,
+          borderWidth: active ? 1.5 : 0,
+          borderColor: active ? palette.border : undefined,
+        }}
+      >
+        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: palette.text }}>
+          {name}
+        </Text>
+        <Text numberOfLines={1} style={{ fontSize: 10, color: palette.text, opacity: 0.75, marginTop: 2 }}>
+          {dragging ? `${formatTime(preview.start)} · ${duration}m` : `${lesson.type} · ${lesson.duration}m`}
+        </Text>
+      </Pressable>
+      {active ? (
+        // The resize handle: a small bar on the bottom edge with a bigger invisible touch area.
+        <View
+          {...resizer.panHandlers}
+          accessibilityLabel="Change lesson length"
+          hitSlop={{ top: 8, bottom: 10, left: 10, right: 10 }}
+          style={{ position: "absolute", bottom: -6, alignSelf: "center", paddingVertical: 4, paddingHorizontal: 12 }}
+        >
+          <View style={{ width: 26, height: 5, borderRadius: 3, backgroundColor: palette.border }} />
+        </View>
+      ) : null}
+    </View>
   );
 }
 
