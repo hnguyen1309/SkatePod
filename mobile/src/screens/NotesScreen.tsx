@@ -13,14 +13,16 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
   const [studentFilter, setStudentFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<Note | null>(null);
 
-  function blankNote(studentId?: string): Note {
+  // From the calendar, `lesson` fills in the note with that lesson's date, type and length.
+  function blankNote(studentId?: string, lesson?: { id: string; date: string; type: string; duration: number }): Note {
     return {
       id: newId(),
       studentId: studentId ?? students[0]?.id ?? "",
-      date: new Date().toISOString(),
-      title: "Freestyle lesson",
-      lessonType: "Freestyle",
-      duration: `${settings.lessonLength} minutes`,
+      date: lesson?.date ?? new Date().toISOString(),
+      title: `${lesson?.type ?? "Freestyle"} lesson`,
+      lessonType: lesson?.type ?? "Freestyle",
+      duration: `${lesson?.duration ?? settings.lessonLength} minutes`,
+      lessonId: lesson?.id,
       overall: OVERALL[0],
       focus: "",
       observations: "",
@@ -30,18 +32,23 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
     };
   }
 
-  function startNew(studentId?: string) {
+  function startNew(studentId?: string, lesson?: { id: string; date: string; type: string; duration: number }) {
     if (!students.length) {
       Alert.alert("Add a student first", "Notes belong to a student. Add one on the Students tab.");
       return;
     }
-    setEditing(blankNote(studentId));
+    setEditing(blankNote(studentId, lesson));
   }
 
   useEffect(() => {
     if (!intent) return;
     if (intent.kind === "add") startNew();
-    if (intent.kind === "newNote") startNew(intent.studentId);
+    if (intent.kind === "newNote") startNew(intent.studentId, intent.lesson);
+    // The calendar found a note already written for that lesson: open it so the coach can add to it.
+    if (intent.kind === "openNote") {
+      const existing = notes.find((note) => note.id === intent.noteId);
+      if (existing) setEditing(existing);
+    }
     if (intent.kind === "filterNotes") setStudentFilter(intent.studentId);
     onIntentHandled();
     // eslint-disable-next-line react-hooks/exhaustive-deps

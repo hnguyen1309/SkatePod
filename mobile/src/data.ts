@@ -61,6 +61,7 @@ export type Note = {
   nextSteps: string;
   skills: string[];
   shared: boolean;
+  lessonId?: string; // the calendar lesson this note was written for (notes from before Nov 2026 don't have one)
 };
 
 export type ProgramElement = {
@@ -431,6 +432,18 @@ export const DEFAULT_PROGRAM: ProgramData = {
   paths: [],
   placements: [],
 };
+
+/**
+ * The note already written for this lesson on this date, if there is one. A coach who forgot something
+ * reopens that note instead of starting a second one. Older notes have no lessonId, so for those any
+ * note for the same student on the same day counts.
+ */
+export function findLessonNote(notes: Note[], lesson: Pick<Lesson, "id" | "studentId">, date: Date) {
+  const sameDay = notes.filter(
+    (note) => note.studentId === lesson.studentId && new Date(note.date).toDateString() === date.toDateString(),
+  );
+  return sameDay.find((note) => note.lessonId === lesson.id) ?? sameDay.find((note) => !note.lessonId);
+}
 
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });

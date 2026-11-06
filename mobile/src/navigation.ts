@@ -4,7 +4,8 @@ export type Tab = "Dashboard" | "Students" | "Calendar" | "Programs" | "Notes" |
 export type Intent =
   | { kind: "add" }
   | { kind: "openStudent"; studentId: string }
-  | { kind: "newNote"; studentId?: string }
+  | { kind: "newNote"; studentId?: string; lesson?: { id: string; date: string; type: string; duration: number } }
+  | { kind: "openNote"; noteId: string }
   | { kind: "filterNotes"; studentId: string };
 
 export type ScreenProps = {

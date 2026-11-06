@@ -11,6 +11,7 @@ import {
   WEEKDAYS,
   findBlockOverlap,
   findClash,
+  findLessonNote,
   formatHour,
   formatTime,
   newId,
@@ -40,7 +41,7 @@ function formatRange(offset: number) {
 }
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { lessons, setLessons, availability, setAvailability, students, studentById, settings } = useStore();
+  const { lessons, setLessons, availability, setAvailability, notes, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
@@ -77,6 +78,10 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const dates = weekDates(weekOffset);
   const visibleDays = mode === "Day" ? [selectedDay] : [0, 1, 2, 3, 4, 5, 6];
   const detail = lessons.find((lesson) => lesson.id === detailId) ?? null;
+  // Lessons repeat weekly, so "this lesson" means its date in the week on screen, at its start time.
+  const detailDate = detail ? new Date(dates[detail.day].date) : null;
+  if (detail && detailDate) detailDate.setHours(Math.floor(detail.start / 60), detail.start % 60, 0, 0);
+  const detailNote = detail && detailDate ? findLessonNote(notes, detail, detailDate) : undefined;
   const editing = lessons.find((lesson) => lesson.id === editingId) ?? null;
   const weekMinutes = lessons.reduce((sum, lesson) => sum + lesson.duration, 0);
 
@@ -292,9 +297,18 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
       {detail ? (
         <LessonDetailSheet
           lesson={detail}
+          noteDate={detailNote ? detailDate : null}
           onAddNotes={() => {
             setDetailId(null);
-            navigate("Notes", { kind: "newNote", studentId: detail.studentId });
+            if (detailNote) {
+              navigate("Notes", { kind: "openNote", noteId: detailNote.id });
+            } else {
+              navigate("Notes", {
+                kind: "newNote",
+                studentId: detail.studentId,
+                lesson: { id: detail.id, date: (detailDate ?? new Date()).toISOString(), type: detail.type, duration: detail.duration },
+              });
+            }
           }}
           onClose={() => setDetailId(null)}
           onDelete={() => remove(detail)}
@@ -467,6 +481,7 @@ function LessonDetailSheet({
   lesson,
   student,
   place,
+  noteDate,
   onEdit,
   onDelete,
   onAddNotes,
@@ -475,6 +490,7 @@ function LessonDetailSheet({
   lesson: Lesson;
   student?: { name: string; focus: string };
   place?: string;
+  noteDate: Date | null; // set when notes were already written for this lesson in the week on screen
   onEdit: () => void;
   onDelete: () => void;
   onAddNotes: () => void;
@@ -506,7 +522,12 @@ function LessonDetailSheet({
         {place ? <Meta icon="home" text={place} /> : null}
         <Meta icon="notes" text={student?.focus ? `Focus: ${student.focus}` : "No focus set"} />
       </View>
-      <Button icon="notes" label="Add lesson notes" onPress={onAddNotes} variant="secondary" />
+      <Button icon="notes" label={noteDate ? "Open lesson notes" : "Add lesson notes"} onPress={onAddNotes} variant="secondary" />
+      {noteDate ? (
+        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 8 }}>
+          Notes already written for {noteDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}. You can add to them.
+        </Text>
+      ) : null}
       <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 14 }}>
         Tip: close this window, then drag the lesson on the calendar to move it.
       </Text>
