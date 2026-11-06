@@ -33,6 +33,7 @@ export const lessonColors: Record<LessonColor, { border: string; bg: string; tex
 
 /** One soft color per discipline category, for the discipline badges. */
 export const categoryColors: Record<DisciplineCategory, { bg: string; fg: string }> = {
+  LEARN_TO_SKATE: { bg: "#f1e0ea", fg: "#7d4f68" },
   SINGLES: { bg: "#dcebee", fg: "#396972" },
   SKATING_SKILLS: { bg: "#ede5dc", fg: "#755c44" },
   ICE_DANCE: { bg: "#e7e2ef", fg: "#685a7e" },

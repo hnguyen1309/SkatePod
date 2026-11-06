@@ -3,6 +3,7 @@ import type { LessonColor } from "./theme";
 export type Tone = { bg: string; fg: string };
 
 export type DisciplineCategory =
+  | "LEARN_TO_SKATE"
   | "SINGLES"
   | "SKATING_SKILLS"
   | "ICE_DANCE"
@@ -12,6 +13,8 @@ export type DisciplineCategory =
   | "THEATRE_ON_ICE";
 
 export type DisciplineId =
+  | "LEARN_TO_SKATE"
+  | "ADULT_LEARN_TO_SKATE"
   | "STANDARD_FREESKATE"
   | "ADULT_FREESKATE"
   | "STANDARD_SKILLS"
@@ -69,20 +72,68 @@ export type ProgramElement = {
 export type RinkPoint = { x: number; y: number };
 export type RinkPlacement = RinkPoint & { code: string; id: string };
 
+// Singles competition tracks and levels, named as in U.S. Figure Skating's 2026-27 charts.
+// (Aspire is a synchronized skating level, not a singles track, so it isn't here.)
 export const TRACK_LEVELS = {
+  // The main competitive pathway. Juvenile and up can qualify for nationals.
   Championship: [
     "Pre-Preliminary", "Preliminary", "Pre-Juvenile", "Juvenile",
     "Intermediate", "Novice", "Junior", "Senior",
   ],
-  Aspire: ["Aspire 1", "Aspire 2", "Aspire 3", "Aspire 4"],
+  // Excel is for skaters who compete for fun and growth with simpler rules. The "Plus"
+  // levels sit between two regular levels and allow a few more difficult elements.
+  Excel: [
+    "Excel Pre-Preliminary", "Excel Preliminary Plus", "Excel Pre-Juvenile Plus",
+    "Excel Juvenile", "Excel Juvenile Plus", "Excel Intermediate", "Excel Intermediate Plus",
+    "Excel Novice", "Excel Junior", "Excel Senior",
+  ],
+  // Adults have their own levels. The "Championship" ones are the qualifying events
+  // (sectionals and adult nationals), and they use the same chart as the level without it.
   Adult: [
-    "Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Adult Gold",
-    "Masters Intermediate-Novice", "Masters Junior-Senior",
+    "Adult Pre-Bronze", "Adult Bronze", "Adult Silver", "Championship Adult Silver",
+    "Adult Gold", "Championship Adult Gold",
+    "Masters Intermediate-Novice", "Championship Masters Intermediate-Novice",
+    "Masters Junior-Senior", "Championship Masters Junior-Senior",
   ],
 } as const;
 
 export type Track = keyof typeof TRACK_LEVELS;
 export const TRACKS = Object.keys(TRACK_LEVELS) as Track[];
+
+/**
+ * Programs saved on the phone before Excel replaced Aspire can have a track or level
+ * that no longer exists. This swaps them for the first valid one so the screen can't break.
+ */
+export function validTrackAndLevel(track: string, level: string): { track: Track; level: string } {
+  const safeTrack = (TRACKS as string[]).includes(track) ? (track as Track) : TRACKS[0];
+  const levels = TRACK_LEVELS[safeTrack] as readonly string[];
+  return { track: safeTrack, level: levels.includes(level) ? level : levels[0] };
+}
+
+// Official U.S. Figure Skating links. We link to their charts instead of copying the rules,
+// because the rules change during the season. Check these links and update the date below
+// whenever the charts change (each new season at the latest).
+export const REQUIREMENTS_SEASON = "2026-27";
+export const REQUIREMENTS_CHECKED = "Nov 5, 2026";
+export const REQUIREMENTS_PAGE_URL = "https://usfigureskating.org/sports/2025/8/12/competition-program-requirements.aspx";
+
+const SINGLES_SHORT_PROGRAM_URL = "https://usfigureskating.org/documents/2025/12/19/2026-27_Singles_SP_Chart.pdf";
+const SINGLES_FREE_SKATE_URL = "https://usfigureskating.org/documents/2026/6/2/2026-27_Singles_FS_Chart.pdf";
+const ADULT_SINGLES_URL = "https://usfigureskating.org/documents/2026/7/7/2026-2027_Adult_Singles_WBP.pdf";
+// Excel runs on the calendar year, so the 2027 chart covers Jan 1 to Dec 31, 2027.
+const EXCEL_FREE_SKATE_URL = "https://usfigureskating.org/documents/2026/10/6/2027_Excel_Free_Skate_Requirements.pdf";
+
+export type RequirementLink = { label: string; url: string };
+
+/** The official charts for a track and level. */
+export function requirementLinks(track: Track, level: string): RequirementLink[] {
+  if (track === "Adult") return [{ label: "Adult requirements", url: ADULT_SINGLES_URL }];
+  if (track === "Excel") return [{ label: "Excel requirements (2027)", url: EXCEL_FREE_SKATE_URL }];
+  const freeSkate = { label: "Free Skate requirements", url: SINGLES_FREE_SKATE_URL };
+  // The short program starts at Juvenile, so lower levels only have a free skate.
+  const hasShortProgram = ["Juvenile", "Intermediate", "Novice", "Junior", "Senior"].includes(level);
+  return hasShortProgram ? [{ label: "Short Program requirements", url: SINGLES_SHORT_PROGRAM_URL }, freeSkate] : [freeSkate];
+}
 
 export type ProgramData = {
   musicTitle: string;
@@ -110,6 +161,7 @@ export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
 export const DISCIPLINE_CATEGORIES: { id: DisciplineCategory; name: string }[] = [
+  { id: "LEARN_TO_SKATE", name: "Learn to Skate" },
   { id: "SINGLES", name: "Singles" },
   { id: "SKATING_SKILLS", name: "Skating Skills" },
   { id: "ICE_DANCE", name: "Ice Dance" },
@@ -130,6 +182,14 @@ export type DisciplineInfo = {
 // Every discipline and its levels (US Figure Skating test structure), lowest level first.
 // Same list as backend/.../student/Discipline.java. Change both together.
 export const DISCIPLINES: DisciplineInfo[] = [
+  {
+    id: "LEARN_TO_SKATE", name: "Learn to Skate", shortName: "Learn to Skate", category: "LEARN_TO_SKATE",
+    levels: ["Snowplow Sam 1", "Snowplow Sam 2", "Basic 1", "Basic 2", "Basic 3", "Basic 4", "Basic 5", "Basic 6"],
+  },
+  {
+    id: "ADULT_LEARN_TO_SKATE", name: "Adult Learn to Skate", shortName: "Adult Learn to Skate", category: "LEARN_TO_SKATE",
+    levels: ["Adult Beginner 1", "Adult Beginner 2", "Adult Beginner 3", "Adult Beginner 4", "Adult Beginner 5", "Adult Beginner 6"],
+  },
   {
     id: "STANDARD_FREESKATE", name: "Standard Track (Freeskate)", shortName: "Freeskate", category: "SINGLES",
     levels: ["Pre-Preliminary", "Preliminary", "Pre-Bronze", "Bronze", "Pre-Silver", "Silver", "Pre-Gold", "Gold"],
@@ -180,7 +240,7 @@ export function categoryName(id: DisciplineCategory) {
   return DISCIPLINE_CATEGORIES.find((item) => item.id === id)?.name ?? id;
 }
 
-/** Puts disciplines in catalog order (Singles first, then Skating Skills, and so on). */
+/** Puts disciplines in catalog order (Learn to Skate first, then Singles, and so on). */
 export function sortDisciplines(list: StudentDiscipline[]) {
   const position = (item: StudentDiscipline) => DISCIPLINES.findIndex((info) => info.id === item.discipline);
   return [...list].sort((a, b) => position(a) - position(b));
@@ -259,36 +319,60 @@ export const SAMPLE_SETTINGS: Settings = {
   sharedNotes: true,
 };
 
-type CatalogItem = ProgramElement & { minimum: Record<Track, number> };
+// Every jump from single to quad: 1T, 1S, 1Lo, 1F, 1Lz, 1A, then 2T ... up to 4A.
+// Built in a loop so the list can't miss one. Names are written the way EMS shows them.
+const JUMP_KINDS = [
+  ["T", "Toe Loop"], ["S", "Salchow"], ["Lo", "Loop"], ["F", "Flip"], ["Lz", "Lutz"], ["A", "Axel"],
+] as const;
+const ROTATIONS = ["Single", "Double", "Triple", "Quad"] as const;
+const JUMPS: ProgramElement[] = ROTATIONS.flatMap((rotation, index) =>
+  JUMP_KINDS.map(([code, name]) => ({
+    code: `${index + 1}${code}`,
+    title: `${rotation} ${name}`,
+    category: "Jump" as const,
+  })),
+);
 
-export const ELEMENT_CATALOG: CatalogItem[] = [
-  { code: "1T", title: "Single toe loop", category: "Jump", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "1S", title: "Single salchow", category: "Jump", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "1Lo", title: "Single loop", category: "Jump", minimum: { Championship: 0, Aspire: 1, Adult: 0 } },
-  { code: "1F", title: "Single flip", category: "Jump", minimum: { Championship: 0, Aspire: 1, Adult: 1 } },
-  { code: "1Lz", title: "Single lutz", category: "Jump", minimum: { Championship: 0, Aspire: 2, Adult: 1 } },
-  { code: "1A", title: "Axel", category: "Jump", minimum: { Championship: 1, Aspire: 3, Adult: 2 } },
-  { code: "2S", title: "Double salchow", category: "Jump", minimum: { Championship: 2, Aspire: 4, Adult: 3 } },
-  { code: "2T", title: "Double toe loop", category: "Jump", minimum: { Championship: 2, Aspire: 4, Adult: 3 } },
-  { code: "2Lo", title: "Double loop", category: "Jump", minimum: { Championship: 3, Aspire: 4, Adult: 4 } },
-  { code: "2F", title: "Double flip", category: "Jump", minimum: { Championship: 4, Aspire: 4, Adult: 4 } },
-  { code: "2Lz", title: "Double lutz", category: "Jump", minimum: { Championship: 4, Aspire: 4, Adult: 4 } },
-  { code: "2A", title: "Double axel", category: "Jump", minimum: { Championship: 5, Aspire: 4, Adult: 5 } },
-  { code: "USp", title: "Upright spin", category: "Spin", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "SSp", title: "Sit spin", category: "Spin", minimum: { Championship: 0, Aspire: 1, Adult: 0 } },
-  { code: "CSp", title: "Camel spin", category: "Spin", minimum: { Championship: 1, Aspire: 2, Adult: 1 } },
-  { code: "CCoSp", title: "Change-foot combination spin", category: "Spin", minimum: { Championship: 2, Aspire: 3, Adult: 2 } },
-  { code: "FCSp", title: "Flying camel spin", category: "Spin", minimum: { Championship: 3, Aspire: 4, Adult: 3 } },
-  { code: "StSq", title: "Step sequence", category: "Sequence", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
-  { code: "ChSq", title: "Choreographic sequence", category: "Choreography", minimum: { Championship: 1, Aspire: 1, Adult: 1 } },
-  { code: "SpSq", title: "Spiral sequence", category: "Choreography", minimum: { Championship: 0, Aspire: 0, Adult: 0 } },
+// Spins in the same order and wording as U.S. Figure Skating's PPC form (EMS), with their ISU codes.
+const SPINS: ProgramElement[] = [
+  { code: "USp", title: "Upright Spin" },
+  { code: "LSp", title: "Layback Spin" },
+  { code: "CSp", title: "Camel Spin" },
+  { code: "SSp", title: "Sit Spin" },
+  { code: "FUSp", title: "Flying Upright Spin" },
+  { code: "FLSp", title: "Flying Layback Spin" },
+  { code: "FCSp", title: "Flying Camel Spin" },
+  { code: "FSSp", title: "Flying Sit Spin" },
+  { code: "CUSp", title: "Change Foot Upright Spin" },
+  { code: "CLSp", title: "Change Foot Layback Spin" },
+  { code: "CCSp", title: "Change Foot Camel Spin" },
+  { code: "CSSp", title: "Change Foot Sit Spin" },
+  { code: "CoSp", title: "Spin Combo with change of position and no change of foot" },
+  { code: "CCoSp", title: "Spin Combo with change of position and change of foot" },
+  { code: "FCoSp", title: "Spin Combo with change of position, no change of foot and flying entry" },
+  { code: "FCCoSp", title: "Spin Combo with change of position and change of foot and flying entry" },
+  { code: "FCCSp", title: "Change Foot Camel Spin with Flying Entry" },
+  { code: "FCSSp", title: "Change Foot Sit Spin with Flying Entry" },
+  { code: "FCUSp", title: "Change Foot Upright Spin with Flying Entry" },
+  { code: "FCLSp", title: "Change Foot Layback Spin with Flying Entry" },
+  { code: "2FtUSp", title: "Two-Foot Upright Spin" },
+].map((spin) => ({ ...spin, category: "Spin" as const }));
+
+// Every element is available at every level: requirements change by season and have exceptions.
+export const ELEMENT_CATALOG: ProgramElement[] = [
+  ...JUMPS,
+  ...SPINS,
+  // Steps & Spirals, in the same order as EMS. The choreographic step sequence (ChSt) was
+  // dropped: the 2026-27 U.S. Figure Skating charts no longer use it.
+  { code: "ChSq", title: "Choreographic Sequence", category: "Choreography" },
+  { code: "StSq", title: "Step Sequence", category: "Sequence" },
 ];
 
 export const STARTER_ELEMENTS: ProgramElement[] = [
-  { code: "1A", title: "Axel", category: "Jump" },
-  { code: "2S", title: "Double salchow", category: "Jump" },
-  { code: "CCoSp", title: "Change-foot combination spin", category: "Spin" },
-  { code: "StSq", title: "Step sequence", category: "Sequence" },
+  { code: "1A", title: "Single Axel", category: "Jump" },
+  { code: "2S", title: "Double Salchow", category: "Jump" },
+  { code: "CCoSp", title: "Spin Combo with change of position and change of foot", category: "Spin" },
+  { code: "StSq", title: "Step Sequence", category: "Sequence" },
 ];
 
 export const DEFAULT_PROGRAM: ProgramData = {
@@ -301,14 +385,6 @@ export const DEFAULT_PROGRAM: ProgramData = {
   paths: [],
   placements: [],
 };
-
-export function eligibleElements(track: Track, level: string): ProgramElement[] {
-  const levels = TRACK_LEVELS[track] as readonly string[];
-  const levelIndex = Math.max(0, levels.indexOf(level));
-  return ELEMENT_CATALOG.filter((item) => item.minimum[track] <= levelIndex).map(
-    ({ code, title, category }) => ({ code, title, category }),
-  );
-}
 
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -331,7 +407,7 @@ export function todayIndex() {
   return (new Date().getDay() + 6) % 7;
 }
 
-const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+export const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /** The hour a calendar row starts, e.g. row 3 ("1 PM") → 13. */
 function rowHour(row: number) {
@@ -367,4 +443,20 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
 export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
   return findNextLesson(studentId, lessons)?.label ?? "Not scheduled";
+}
+
+/**
+ * The lesson that's already in the way of `lesson`, or undefined if the time is free.
+ * A coach teaches one lesson at a time, so this checks every student's lessons on the same day.
+ * Two lessons clash when each one starts before the other ends (back-to-back is fine).
+ * Same rule as LessonService.checkTimeIsFree in the backend.
+ */
+export function findClash(lesson: Pick<Lesson, "id" | "day" | "row" | "duration">, lessons: Lesson[]) {
+  const start = rowHour(lesson.row) * 60;
+  const end = start + lesson.duration;
+  return lessons.find((other) => {
+    if (other.id === lesson.id || other.day !== lesson.day) return false;
+    const otherStart = rowHour(other.row) * 60;
+    return start < otherStart + other.duration && otherStart < end;
+  });
 }

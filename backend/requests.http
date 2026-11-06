@@ -81,6 +81,19 @@ Content-Type: application/json
   "color": "TEAL"
 }
 
+### Double booking → 409 (send "Schedule a lesson" above first: this one starts during it)
+POST {{baseUrl}}/lessons
+Content-Type: application/json
+
+{
+  "studentId": "11111111-1111-1111-1111-000000000001",
+  "date": "2026-11-06",
+  "startTime": "17:00",
+  "durationMinutes": 30,
+  "type": "Public",
+  "color": "SAND"
+}
+
 ### Invalid lesson type example → 400 (only Public, Freestyle or Off-ice)
 POST {{baseUrl}}/lessons
 Content-Type: application/json

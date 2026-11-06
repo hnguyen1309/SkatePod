@@ -1,0 +1,51 @@
+# CI: runs SkatePod's checks on GitHub every time code is pushed or a pull request is opened.
+# If a check fails, the commit gets a red X on GitHub, so you know before merging.
+# The two jobs below run side by side (in parallel), each on a fresh Linux machine.
+# Jira: SKATE-73.
+
+name: CI
+
+on:
+  push:            # every push, on any branch
+  pull_request:    # and every pull request
+
+# If you push again before the last run finished, cancel the old run (saves free minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    name: Mobile type check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      # `npm ci` installs exactly the versions in package-lock.json (like a clean `npm install`).
+      - run: npm ci
+      - run: npx tsc --noEmit
+      # Later: add `npm test` here once the Jest unit tests exist.
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      # The tests are plain unit tests with mocked repositories, so no PostgreSQL is needed here.
+      # `-B` (batch mode) keeps the log readable on GitHub.
+      - run: ./mvnw -B test

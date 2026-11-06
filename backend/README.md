@@ -67,7 +67,9 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 | PUT | `/api/lessons/{id}` | Update a lesson |
 | DELETE | `/api/lessons/{id}` | Delete a lesson → 204 |
 
-Errors come back as JSON "problem details": **400** for invalid input (with the field errors) and **404** for unknown IDs.
+Errors come back as JSON "problem details": **400** for invalid input (with the field errors), **404** for unknown IDs and **409** for a double booking.
+
+A coach can only teach one lesson at a time, so a new or moved lesson can't overlap another lesson that day, for any student. The API answers with a 409 that says which lesson is in the way. Back-to-back lessons are fine (one ending at 9:45 and the next starting at 9:45).
 
 A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
 

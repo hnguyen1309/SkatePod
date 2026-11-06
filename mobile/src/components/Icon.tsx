@@ -20,7 +20,9 @@ export type IconName =
   | "trash"
   | "up"
   | "down"
-  | "close";
+  | "close"
+  | "edit"
+  | "grip";
 
 const paths: Record<IconName, ReactNode> = {
   calendar: (
@@ -46,8 +48,9 @@ const paths: Record<IconName, ReactNode> = {
   ),
   logo: (
     <>
-      <Path d="M5 16c4.5-1 6.5-4.5 7.5-10 1.7 4 3.8 6.7 6.5 8" />
-      <Path d="M5 16c3.2 1.8 7.8 2.4 14 .2M8 20h8" />
+      {/* Skate boot (open at the ankle) above a blade with a toe pick. Traced from design/logo/skatepod-logo-navy.svg. */}
+      <Path d="M17.75 3.13C15.54 8.05 13.38 10.34 10.7 11.43 7.19 12.75 5.53 14.78 5.6 17.85v.6h15.32v-1.87" />
+      <Path d="M3.08 19.38c.39 1.1 1.15 1.41 1.95 1.51h15.89" />
     </>
   ),
   music: (
@@ -95,6 +98,18 @@ const paths: Record<IconName, ReactNode> = {
   up: <Path d="m6 15 6-6 6 6" />,
   down: <Path d="m6 9 6 6 6-6" />,
   close: <Path d="M6 6l12 12M18 6 6 18" />,
+  edit: <Path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />,
+  // Six dots: the usual "drag me" handle.
+  grip: (
+    <>
+      <Circle cx="9" cy="6" r="1" />
+      <Circle cx="15" cy="6" r="1" />
+      <Circle cx="9" cy="12" r="1" />
+      <Circle cx="15" cy="12" r="1" />
+      <Circle cx="9" cy="18" r="1" />
+      <Circle cx="15" cy="18" r="1" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, color = "#53636f" }: { name: IconName; size?: number; color?: string }) {

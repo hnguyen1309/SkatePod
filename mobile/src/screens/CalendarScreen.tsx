@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
-import { LESSON_TYPES, TIMES, WEEKDAYS, newId, todayIndex, weekDates, type Lesson } from "../data";
+import { FULL_WEEKDAYS, LESSON_TYPES, TIMES, WEEKDAYS, findClash, newId, todayIndex, weekDates, type Lesson } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius, type LessonColor } from "../theme";
@@ -237,6 +237,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         <LessonEditor
           defaultDay={mode === "Day" ? selectedDay : todayIndex()}
           defaultDuration={settings.lessonLength}
+          lessons={lessons}
           onClose={() => setEditorOpen(false)}
           onSave={(lesson) => {
             setLessons((current) => [...current, lesson]);
@@ -252,12 +253,14 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
 function LessonEditor({
   students,
+  lessons,
   defaultDay,
   defaultDuration,
   onClose,
   onSave,
 }: {
   students: { id: string; name: string }[];
+  lessons: Lesson[];
   defaultDay: number;
   defaultDuration: number;
   onClose: () => void;
@@ -277,7 +280,7 @@ function LessonEditor({
       Alert.alert("Add a student first", "Lessons need a student. Add one on the Students tab.");
       return;
     }
-    onSave({
+    const lesson: Lesson = {
       id: newId(),
       studentId,
       day: WEEKDAYS.indexOf(day),
@@ -285,7 +288,17 @@ function LessonEditor({
       type,
       duration: Math.max(5, Number.parseInt(duration, 10) || 45),
       color,
-    });
+    };
+    // Block double booking: you can only coach one lesson at a time.
+    const clash = findClash(lesson, lessons);
+    if (clash) {
+      Alert.alert(
+        "That time is taken",
+        `${nameOf(clash.studentId)} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${TIMES[clash.row]} (${clash.duration} minutes). Pick another time or day.`,
+      );
+      return;
+    }
+    onSave(lesson);
   }
 
   return (
