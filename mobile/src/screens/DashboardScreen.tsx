@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { Avatar, Card, DisciplineBadges, Empty, Heading, ProgressBar, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
-import { TIMES, WEEKDAYS, disciplineSummary, initialsOf, nextLessonLabel, todayIndex, type Student } from "../data";
+import { WEEKDAYS, formatTime, disciplineSummary, initialsOf, nextLessonLabel, todayIndex, type Student } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius } from "../theme";
@@ -24,14 +24,14 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   );
 
   const today = todayIndex();
-  const todays = lessons.filter((lesson) => lesson.day === today).sort((a, b) => a.row - b.row);
+  const todays = lessons.filter((lesson) => lesson.day === today).sort((a, b) => a.start - b.start);
   const todaysMinutes = todays.reduce((sum, lesson) => sum + lesson.duration, 0);
 
   const upcoming = useMemo(() => {
     const ordered = [...lessons].sort((a, b) => {
       const dayA = (a.day - today + 7) % 7;
       const dayB = (b.day - today + 7) % 7;
-      return dayA - dayB || a.row - b.row;
+      return dayA - dayB || a.start - b.start;
     });
     return ordered.slice(0, 6);
   }, [lessons, today]);
@@ -94,11 +94,11 @@ export function DashboardScreen({ navigate }: ScreenProps) {
                 }}
               >
                 <View style={{ width: 4, alignSelf: "stretch", borderRadius: 2, backgroundColor: palette.border }} />
-                <View style={{ width: 48 }}>
+                <View style={{ width: 62 }}>
                   <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, letterSpacing: 1 }}>
                     {lesson.day === today ? "TODAY" : WEEKDAYS[lesson.day]}
                   </Text>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.body, marginTop: 2 }}>{TIMES[lesson.row]}</Text>
+                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.body, marginTop: 2 }}>{formatTime(lesson.start)}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{student?.name ?? "Removed student"}</Text>

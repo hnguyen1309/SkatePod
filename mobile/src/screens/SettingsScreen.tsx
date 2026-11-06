@@ -50,7 +50,6 @@ export function SettingsScreen(_props: ScreenProps) {
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 16 }}>Shown on schedules and shared training histories.</Text>
         <Field autoCapitalize="words" label="Coach name" onChangeText={(coachName) => set({ coachName })} value={draft.coachName} />
         <Field autoCapitalize="none" keyboardType="email-address" label="Email" onChangeText={(email) => set({ email })} value={draft.email} />
-        <Field autoCapitalize="words" label="Home rink" onChangeText={(rink) => set({ rink })} value={draft.rink} />
         <PickerField
           label="Default lesson length"
           onChange={(value) => set({ lessonLength: Number(value) })}

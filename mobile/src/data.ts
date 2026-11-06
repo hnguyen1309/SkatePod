@@ -42,7 +42,7 @@ export type Lesson = {
   id: string;
   studentId: string;
   day: number; // 0 = Monday ... 6 = Sunday (weekly schedule)
-  row: number; // index into TIMES
+  start: number; // minutes after midnight, e.g. 9:30 AM = 570 (any time, in 15-minute steps)
   type: string;
   duration: number; // minutes
   color: LessonColor;
@@ -146,16 +146,64 @@ export type ProgramData = {
   placements: RinkPlacement[];
 };
 
+/**
+ * An optional "I'm available to coach" block on the weekly calendar, e.g. Tuesday 3–6 PM at North Rink.
+ * Coaches don't have to set any: the calendar works fine empty. Coaches who teach at several rinks
+ * add one block per rink, so there's no single "home rink" any more.
+ */
+export type AvailabilityBlock = {
+  id: string;
+  day: number; // 0 = Monday ... 6 = Sunday
+  start: number; // minutes after midnight
+  end: number; // minutes after midnight, after start
+  place?: string; // optional free text, e.g. "North Rink" or "Off-ice studio"
+};
+
 export type Settings = {
   coachName: string;
   email: string;
-  rink: string;
   lessonLength: number;
   reminders: boolean;
   sharedNotes: boolean;
 };
 
-export const TIMES = ["7 AM", "9 AM", "11 AM", "1 PM", "3 PM"];
+// The calendar shows these hours; lessons can start at any 15 minutes in between.
+export const FIRST_HOUR = 6; // 6 AM
+export const LAST_HOUR = 22; // 10 PM (the calendar ends here)
+export const MINUTE_STEPS = [0, 15, 30, 45] as const;
+
+/** 570 → "9:30 AM", 780 → "1:00 PM". */
+export function formatTime(minutes: number) {
+  const hour24 = Math.floor(minutes / 60);
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minutes % 60).padStart(2, "0")} ${hour24 < 12 ? "AM" : "PM"}`;
+}
+
+/** 9 → "9 AM", 13 → "1 PM" (for the hour labels down the side of the calendar). */
+export function formatHour(hour24: number) {
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12} ${hour24 < 12 ? "AM" : "PM"}`;
+}
+
+// Before Nov 2026 lessons could only start at 7, 9, 11 AM, 1 or 3 PM and were saved as a `row`
+// (0–4) instead of `start`. This turns those old saved lessons into the new shape so none are lost.
+const OLD_ROW_HOURS = [7, 9, 11, 13, 15];
+export function upgradeLesson(lesson: Lesson & { row?: number }): Lesson {
+  if (typeof lesson.start === "number") return lesson;
+  const { row, ...rest } = lesson;
+  return { ...rest, start: (OLD_ROW_HOURS[row ?? 0] ?? 9) * 60 };
+}
+
+/** The place of the availability block a lesson falls in, if any (e.g. "North Rink"). */
+export function placeFor(lesson: Pick<Lesson, "day" | "start">, blocks: AvailabilityBlock[]) {
+  const block = blocks.find((item) => item.day === lesson.day && item.start <= lesson.start && lesson.start < item.end);
+  return block?.place || undefined;
+}
+
+/** The block already in the way of `block` on the same day, or undefined if there's room. */
+export function findBlockOverlap(block: Pick<AvailabilityBlock, "id" | "day" | "start" | "end">, blocks: AvailabilityBlock[]) {
+  return blocks.find((other) => other.id !== block.id && other.day === block.day && block.start < other.end && other.start < block.end);
+}
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
@@ -294,13 +342,13 @@ export const SAMPLE_STUDENTS: Student[] = [
 ];
 
 export const SAMPLE_LESSONS: Lesson[] = [
-  { id: "l1", studentId: "s3", day: 0, row: 2, type: "Public", duration: 45, color: "sand" },
-  { id: "l2", studentId: "s2", day: 1, row: 1, type: "Freestyle", duration: 60, color: "teal" },
-  { id: "l3", studentId: "s1", day: 2, row: 4, type: "Off-ice", duration: 30, color: "purple" },
-  { id: "l4", studentId: "s1", day: 3, row: 0, type: "Freestyle", duration: 60, color: "teal" },
-  { id: "l5", studentId: "s2", day: 3, row: 3, type: "Freestyle", duration: 45, color: "teal" },
-  { id: "l6", studentId: "s3", day: 4, row: 2, type: "Off-ice", duration: 45, color: "purple" },
-  { id: "l7", studentId: "s1", day: 5, row: 1, type: "Public", duration: 60, color: "sand" },
+  { id: "l1", studentId: "s3", day: 0, start: 660, type: "Public", duration: 45, color: "sand" },
+  { id: "l2", studentId: "s2", day: 1, start: 540, type: "Freestyle", duration: 60, color: "teal" },
+  { id: "l3", studentId: "s1", day: 2, start: 900, type: "Off-ice", duration: 30, color: "purple" },
+  { id: "l4", studentId: "s1", day: 3, start: 420, type: "Freestyle", duration: 60, color: "teal" },
+  { id: "l5", studentId: "s2", day: 3, start: 780, type: "Freestyle", duration: 45, color: "teal" },
+  { id: "l6", studentId: "s3", day: 4, start: 660, type: "Off-ice", duration: 45, color: "purple" },
+  { id: "l7", studentId: "s1", day: 5, start: 540, type: "Public", duration: 60, color: "sand" },
 ];
 
 export const SAMPLE_NOTES: Note[] = [
@@ -313,7 +361,6 @@ export const SAMPLE_NOTES: Note[] = [
 export const SAMPLE_SETTINGS: Settings = {
   coachName: "Mia Carter",
   email: "mia@example.com",
-  rink: "North Rink",
   lessonLength: 45,
   reminders: true,
   sharedNotes: true,
@@ -409,12 +456,6 @@ export function todayIndex() {
 
 export const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-/** The hour a calendar row starts, e.g. row 3 ("1 PM") → 13. */
-function rowHour(row: number) {
-  const [hour, half] = TIMES[row].split(" ");
-  return (Number(hour) % 12) + (half === "PM" ? 12 : 0);
-}
-
 /**
  * A student's next lesson, worked out from the weekly calendar (the calendar is the source of truth,
  * like NextLessonCalculator in the backend). A lesson that already started today counts as next week's.
@@ -428,8 +469,8 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
   for (const lesson of lessons) {
     if (lesson.studentId !== studentId) continue;
     let daysAhead = (lesson.day - today + 7) % 7;
-    if (daysAhead === 0 && rowHour(lesson.row) * 60 < nowMinutes) daysAhead = 7;
-    const sooner = !best || daysAhead < best.daysAhead || (daysAhead === best.daysAhead && lesson.row < best.lesson.row);
+    if (daysAhead === 0 && lesson.start < nowMinutes) daysAhead = 7;
+    const sooner = !best || daysAhead < best.daysAhead || (daysAhead === best.daysAhead && lesson.start < best.lesson.start);
     if (sooner) best = { lesson, daysAhead };
   }
   if (!best) return null;
@@ -437,7 +478,7 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
   const { lesson, daysAhead } = best;
   const day =
     daysAhead === 0 ? "Today" : daysAhead === 1 ? "Tomorrow" : daysAhead === 7 ? `Next ${FULL_WEEKDAYS[lesson.day]}` : FULL_WEEKDAYS[lesson.day];
-  return { lesson, label: `${day}, ${TIMES[lesson.row].replace(" ", ":00 ")}` };
+  return { lesson, label: `${day}, ${formatTime(lesson.start)}` };
 }
 
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
@@ -451,12 +492,10 @@ export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
  * Two lessons clash when each one starts before the other ends (back-to-back is fine).
  * Same rule as LessonService.checkTimeIsFree in the backend.
  */
-export function findClash(lesson: Pick<Lesson, "id" | "day" | "row" | "duration">, lessons: Lesson[]) {
-  const start = rowHour(lesson.row) * 60;
-  const end = start + lesson.duration;
+export function findClash(lesson: Pick<Lesson, "id" | "day" | "start" | "duration">, lessons: Lesson[]) {
+  const end = lesson.start + lesson.duration;
   return lessons.find((other) => {
     if (other.id === lesson.id || other.day !== lesson.day) return false;
-    const otherStart = rowHour(other.row) * 60;
-    return start < otherStart + other.duration && otherStart < end;
+    return lesson.start < other.start + other.duration && other.start < end;
   });
 }

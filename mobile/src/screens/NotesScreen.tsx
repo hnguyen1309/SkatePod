@@ -173,7 +173,7 @@ function NoteEditor({
     if (draft.nextSteps) body.push(`Next steps: ${draft.nextSteps}`);
     const lines = [
       `${studentName} · ${formatShortDate(draft.date)}`,
-      `${draft.lessonType} · ${draft.duration} · ${settings.rink}`,
+      `${draft.lessonType} · ${draft.duration}`,
       "",
       ...body,
       "",
@@ -196,7 +196,7 @@ function NoteEditor({
       visible
     >
       <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
-        {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} · {settings.rink}
+        {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </Text>
 
       {studentIds.length ? (

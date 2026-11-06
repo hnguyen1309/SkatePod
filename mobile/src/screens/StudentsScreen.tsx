@@ -30,6 +30,7 @@ import {
   initialsOf,
   nextLessonLabel,
   newId,
+  placeFor,
   sortDisciplines,
   type DisciplineCategory,
   type DisciplineId,
@@ -44,7 +45,7 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, setStudents, lessons, notes, programs, settings } = useStore();
+  const { students, setStudents, lessons, availability, notes, programs } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -170,7 +171,9 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
             <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 18 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#355e64" }}>{detailNext?.label ?? "Not scheduled"}</Text>
               <Text style={{ fontSize: 12, color: "#728387", marginTop: 3 }}>
-                {detailNext ? `${detailNext.lesson.type} · ${detailNext.lesson.duration} minutes · ${settings.rink}` : "Add a lesson on the Calendar tab"}
+                {detailNext
+                  ? [detailNext.lesson.type, `${detailNext.lesson.duration} minutes`, placeFor(detailNext.lesson, availability)].filter(Boolean).join(" · ")
+                  : "Add a lesson on the Calendar tab"}
               </Text>
             </View>
             <View style={{ gap: 10 }}>

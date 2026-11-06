@@ -1,13 +1,34 @@
 import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
-import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
-import { FULL_WEEKDAYS, LESSON_TYPES, TIMES, WEEKDAYS, findClash, newId, todayIndex, weekDates, type Lesson } from "../data";
+import { Button, Card, Dropdown, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
+import {
+  FIRST_HOUR,
+  FULL_WEEKDAYS,
+  LAST_HOUR,
+  LESSON_TYPES,
+  MINUTE_STEPS,
+  WEEKDAYS,
+  findBlockOverlap,
+  findClash,
+  formatHour,
+  formatTime,
+  newId,
+  placeFor,
+  todayIndex,
+  weekDates,
+  type AvailabilityBlock,
+  type Lesson,
+} from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius, type LessonColor } from "../theme";
 
-const ROW_HEIGHT = 78;
+const ROW_HEIGHT = 64; // one hour
+const HOURS = Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, index) => FIRST_HOUR + index); // 6 AM ... 9 PM
+
+// Where a time sits on the grid, in pixels from the top (6 AM = 0).
+const topFor = (minutes: number) => ((minutes - FIRST_HOUR * 60) / 60) * ROW_HEIGHT;
 const DAY_WIDTH = 104;
 const MODES = ["Day", "Week"] as const;
 type Mode = (typeof MODES)[number];
@@ -19,12 +40,13 @@ function formatRange(offset: number) {
 }
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { lessons, setLessons, students, studentById, settings } = useStore();
+  const { lessons, setLessons, availability, setAvailability, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
   useEffect(() => {
     if (!intent) return;
@@ -54,7 +76,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   return (
     <Screen>
-      <Heading description="Plan lessons, rink time, and off-ice sessions across your roster." eyebrow="Schedule" title="Calendar" />
+      <Heading description="Add lessons at any time, or set the times you’re available to coach (optional)." eyebrow="Schedule" title="Calendar" />
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
@@ -62,6 +84,13 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         </View>
         <Button icon="plus" label="Add" onPress={() => setEditorOpen(true)} />
       </View>
+      <Button
+        icon="clock"
+        label={availability.length ? `Availability (${availability.length})` : "Set availability (optional)"}
+        onPress={() => setAvailabilityOpen(true)}
+        style={{ marginBottom: 14 }}
+        variant="secondary"
+      />
 
       <Card style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: "#e8edf1" }}>
@@ -104,9 +133,9 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           <View style={{ flexDirection: "row" }}>
             <View style={{ width: 52 }}>
               <View style={{ height: mode === "Week" ? 52 : 0 }} />
-              {TIMES.map((time) => (
-                <View key={time} style={{ height: ROW_HEIGHT, alignItems: "center", paddingTop: 6 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "600", color: "#929da7" }}>{time}</Text>
+              {HOURS.map((hour) => (
+                <View key={hour} style={{ height: ROW_HEIGHT, alignItems: "center", paddingTop: 4 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "600", color: "#929da7" }}>{formatHour(hour)}</Text>
                 </View>
               ))}
             </View>
@@ -143,9 +172,36 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                     </View>
                   ) : null}
                   <View style={{ position: "relative" }}>
-                    {TIMES.map((time) => (
-                      <View key={time} style={{ height: ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }} />
+                    {HOURS.map((hour) => (
+                      <View key={hour} style={{ height: ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }} />
                     ))}
+                    {/* Optional availability blocks sit behind the lessons as a soft shaded area. */}
+                    {availability
+                      .filter((block) => block.day === dayIndex)
+                      .map((block) => (
+                        <View
+                          key={block.id}
+                          pointerEvents="none"
+                          style={{
+                            position: "absolute",
+                            top: topFor(block.start),
+                            height: topFor(block.end) - topFor(block.start),
+                            left: 0,
+                            right: 0,
+                            backgroundColor: colors.tealSoft,
+                            borderLeftWidth: 2,
+                            borderLeftColor: "#bcd9db",
+                            paddingHorizontal: 5,
+                            paddingTop: 2,
+                          }}
+                        >
+                          {block.place ? (
+                            <Text numberOfLines={1} style={{ fontSize: 9, fontWeight: "700", color: "#5f9195" }}>
+                              {block.place}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
                     {lessons
                       .filter((lesson) => lesson.day === dayIndex)
                       .map((lesson) => {
@@ -159,7 +215,9 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                             onPress={() => setSelectedId(lesson.id)}
                             style={{
                               position: "absolute",
-                              top: lesson.row * ROW_HEIGHT + 6,
+                              top: topFor(lesson.start) + 2,
+                              height: Math.max(30, (lesson.duration / 60) * ROW_HEIGHT - 4),
+                              overflow: "hidden",
                               left: 5,
                               right: 5,
                               borderLeftWidth: 3,
@@ -202,8 +260,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
               {selectedStudent?.name ?? "Removed student"} · {selected.type}
             </Text>
             <View style={{ gap: 8, marginVertical: 14, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.borderSoft }}>
-              <Meta icon="clock" text={`${WEEKDAYS[selected.day]} · ${TIMES[selected.row]} · ${selected.duration} minutes`} />
-              <Meta icon="calendar" text={settings.rink} />
+              <Meta icon="clock" text={`${WEEKDAYS[selected.day]} · ${formatTime(selected.start)} · ${selected.duration} minutes`} />
+              {placeFor(selected, availability) ? <Meta icon="calendar" text={placeFor(selected, availability) ?? ""} /> : null}
               <Meta icon="notes" text={selectedStudent?.focus ?? "—"} />
             </View>
             <View style={{ flexDirection: "row", gap: 10 }}>
@@ -247,6 +305,10 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           students={students.map((student) => ({ id: student.id, name: student.name }))}
         />
       ) : null}
+
+      {availabilityOpen ? (
+        <AvailabilitySheet blocks={availability} onChange={setAvailability} onClose={() => setAvailabilityOpen(false)} />
+      ) : null}
     </Screen>
   );
 }
@@ -269,7 +331,7 @@ function LessonEditor({
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(studentIds[0] ?? "");
   const [day, setDay] = useState(WEEKDAYS[defaultDay]);
-  const [time, setTime] = useState(TIMES[0]);
+  const [start, setStart] = useState(9 * 60); // 9:00 AM
   const [type, setType] = useState(LESSON_TYPES[0]);
   const [duration, setDuration] = useState(String(defaultDuration));
   const [color, setColor] = useState<LessonColor>("teal");
@@ -284,7 +346,7 @@ function LessonEditor({
       id: newId(),
       studentId,
       day: WEEKDAYS.indexOf(day),
-      row: TIMES.indexOf(time),
+      start,
       type,
       duration: Math.max(5, Number.parseInt(duration, 10) || 45),
       color,
@@ -294,7 +356,7 @@ function LessonEditor({
     if (clash) {
       Alert.alert(
         "That time is taken",
-        `${nameOf(clash.studentId)} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${TIMES[clash.row]} (${clash.duration} minutes). Pick another time or day.`,
+        `${nameOf(clash.studentId)} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)} (${clash.duration} minutes). Pick another time or day.`,
       );
       return;
     }
@@ -319,7 +381,7 @@ function LessonEditor({
         <Text style={{ color: colors.muted, marginBottom: 16 }}>You don’t have any students yet.</Text>
       )}
       <PickerField label="Day" onChange={setDay} options={WEEKDAYS} value={day} />
-      <PickerField label="Start time" onChange={setTime} options={TIMES} value={time} />
+      <TimePicker label="Start time" onChange={setStart} value={start} />
       <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
       <Field keyboardType="number-pad" label="Duration (minutes)" onChangeText={setDuration} value={duration} />
       <PickerField
@@ -329,6 +391,109 @@ function LessonEditor({
         renderLabel={(value) => ({ teal: "Freestyle", sand: "Public", purple: "Off-ice" })[value]}
         value={color}
       />
+    </Sheet>
+  );
+}
+
+// Picks a time in 15-minute steps: an hour from a dropdown, then the minutes.
+// Lessons can start at any time; nothing is tied to rink session times.
+function TimePicker({ label, value, onChange, lastHour = LAST_HOUR - 1 }: { label: string; value: number; onChange: (minutes: number) => void; lastHour?: number }) {
+  const hours = Array.from({ length: lastHour - FIRST_HOUR + 1 }, (_, index) => formatHour(FIRST_HOUR + index));
+  const hour = Math.floor(value / 60);
+  const minute = value % 60;
+  const minuteLabels = MINUTE_STEPS.map((step) => `:${String(step).padStart(2, "0")}`);
+  return (
+    <View>
+      <Dropdown
+        label={label}
+        onChange={(next) => onChange((FIRST_HOUR + hours.indexOf(next)) * 60 + minute)}
+        options={hours}
+        value={formatHour(hour)}
+      />
+      <View style={{ marginTop: -8, marginBottom: 16 }}>
+        <Segmented
+          onChange={(next) => onChange(hour * 60 + Number(next.slice(1)))}
+          options={minuteLabels}
+          value={`:${String(minute).padStart(2, "0")}`}
+        />
+      </View>
+    </View>
+  );
+}
+
+// Optional: the times the coach is available to coach, with an optional place (rink, studio...).
+// A coach who teaches at several rinks adds one block per rink. Lessons can still go anywhere.
+function AvailabilitySheet({
+  blocks,
+  onChange,
+  onClose,
+}: {
+  blocks: AvailabilityBlock[];
+  onChange: (blocks: AvailabilityBlock[]) => void;
+  onClose: () => void;
+}) {
+  const [day, setDay] = useState(WEEKDAYS[todayIndex()]);
+  const [start, setStart] = useState(15 * 60); // 3:00 PM
+  const [end, setEnd] = useState(18 * 60); // 6:00 PM
+  const [place, setPlace] = useState("");
+  const sorted = [...blocks].sort((a, b) => a.day - b.day || a.start - b.start);
+
+  function add() {
+    const block: AvailabilityBlock = { id: newId(), day: WEEKDAYS.indexOf(day), start, end, place: place.trim() || undefined };
+    if (end <= start) {
+      Alert.alert("Check the times", "The end time needs to be after the start time.");
+      return;
+    }
+    const overlap = findBlockOverlap(block, blocks);
+    if (overlap) {
+      Alert.alert(
+        "That overlaps another block",
+        `You're already available ${FULL_WEEKDAYS[overlap.day]} ${formatTime(overlap.start)}–${formatTime(overlap.end)}. Change the times or delete that block first.`,
+      );
+      return;
+    }
+    onChange([...blocks, block]);
+    setPlace("");
+  }
+
+  return (
+    <Sheet footer={<Button label="Done" onPress={onClose} style={{ flex: 1 }} />} onClose={onClose} title="Availability" visible>
+      <Text style={{ fontSize: 13, color: colors.muted, lineHeight: 19, marginBottom: 16 }}>
+        Optional. Mark when you’re available to coach, and where. You can still book lessons at any time.
+      </Text>
+
+      {sorted.length ? (
+        <View style={{ borderWidth: 1, borderColor: "#e1e7eb", borderRadius: radius.md, marginBottom: 18 }}>
+          {sorted.map((block, index) => (
+            <View
+              key={block.id}
+              style={{ flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderTopWidth: index ? 1 : 0, borderTopColor: "#e8edf1" }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.text }}>
+                  {FULL_WEEKDAYS[block.day]} · {formatTime(block.start)}–{formatTime(block.end)}
+                </Text>
+                {block.place ? <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{block.place}</Text> : null}
+              </View>
+              <IconButton
+                background={colors.dangerSoft}
+                color={colors.danger}
+                icon="close"
+                label="Delete block"
+                onPress={() => onChange(blocks.filter((item) => item.id !== block.id))}
+                size={28}
+              />
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <Label>Add a block</Label>
+      <PickerField label="Day" onChange={setDay} options={WEEKDAYS} value={day} />
+      <TimePicker label="From" onChange={setStart} value={start} />
+      <TimePicker label="To" lastHour={LAST_HOUR} onChange={(minutes) => setEnd(Math.min(minutes, LAST_HOUR * 60))} value={end} />
+      <Field label="Place (optional)" onChangeText={setPlace} placeholder="e.g. North Rink" value={place} />
+      <Button icon="plus" label="Add block" onPress={add} variant="secondary" />
     </Sheet>
   );
 }
