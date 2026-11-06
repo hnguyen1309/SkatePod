@@ -46,6 +46,9 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [selectedDay, setSelectedDay] = useState(todayIndex());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // The lesson whose detail window is open (tap a lesson to open it), and the lesson being edited.
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   // Where the coach tapped on the calendar, so the new lesson starts there (like Google Calendar).
   const [tapped, setTapped] = useState<{ day: number; start: number } | null>(null);
   // While a lesson is being dragged, the page and the week can't scroll, and its day column draws on top.
@@ -73,8 +76,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   const dates = weekDates(weekOffset);
   const visibleDays = mode === "Day" ? [selectedDay] : [0, 1, 2, 3, 4, 5, 6];
-  const selected = lessons.find((lesson) => lesson.id === selectedId) ?? null;
-  const selectedStudent = selected ? studentById(selected.studentId) : undefined;
+  const detail = lessons.find((lesson) => lesson.id === detailId) ?? null;
+  const editing = lessons.find((lesson) => lesson.id === editingId) ?? null;
   const weekMinutes = lessons.reduce((sum, lesson) => sum + lesson.duration, 0);
 
   function remove(lesson: Lesson) {
@@ -86,6 +89,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         onPress: () => {
           setLessons((current) => current.filter((item) => item.id !== lesson.id));
           setSelectedId(null);
+          setDetailId(null);
         },
       },
     ]);
@@ -93,7 +97,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   return (
     <Screen scrollEnabled={draggingDay === null}>
-      <Heading description="Tap an empty time to add a lesson. Tap a lesson, then drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
+      <Heading description="Tap an empty time to add a lesson. Tap a lesson to see, edit or delete it; after that you can drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
@@ -250,7 +254,12 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                           name={studentById(lesson.studentId)?.name.split(" ")[0] ?? "Removed"}
                           onDragChange={(dragging) => setDraggingDay(dragging ? lesson.day : null)}
                           onMove={(changes) => moveLesson(lesson, changes)}
-                          onSelect={() => setSelectedId(lesson.id)}
+                          onSelect={() => {
+                            // Tapping a lesson opens its detail window. It also stays selected after you
+                            // close the window, so you can then drag it or its bottom edge.
+                            setSelectedId(lesson.id);
+                            setDetailId(lesson.id);
+                          }}
                         />
                       ))}
                   </View>
@@ -267,32 +276,6 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         </View>
       </Card>
 
-      <Card style={{ marginBottom: 16 }}>
-        <Label>Selected lesson</Label>
-        {selected ? (
-          <>
-            <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>
-              {selectedStudent?.name ?? "Removed student"} · {selected.type}
-            </Text>
-            <View style={{ gap: 8, marginVertical: 14, paddingVertical: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.borderSoft }}>
-              <Meta icon="clock" text={`${WEEKDAYS[selected.day]} · ${formatTime(selected.start)} · ${selected.duration} minutes`} />
-              {placeFor(selected, availability) ? <Meta icon="calendar" text={placeFor(selected, availability) ?? ""} /> : null}
-              <Meta icon="notes" text={selectedStudent?.focus ?? "—"} />
-            </View>
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <Button label="Delete" onPress={() => remove(selected)} style={{ flex: 1 }} variant="danger" />
-              <Button
-                label="Add notes"
-                onPress={() => navigate("Notes", { kind: "newNote", studentId: selected.studentId })}
-                style={{ flex: 1 }}
-              />
-            </View>
-          </>
-        ) : (
-          <Text style={{ color: colors.muted, fontSize: 13 }}>Tap a lesson on the calendar to see its details.</Text>
-        )}
-      </Card>
-
       <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
         <Text style={{ fontSize: 10, fontWeight: "700", letterSpacing: 1.5, color: "#a9dfe1" }}>EVERY WEEK</Text>
         <Text style={{ fontSize: 28, fontWeight: "700", letterSpacing: -1, color: colors.white, marginTop: 8 }}>
@@ -305,6 +288,40 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           </Text>
         </View>
       </Card>
+
+      {detail ? (
+        <LessonDetailSheet
+          lesson={detail}
+          onAddNotes={() => {
+            setDetailId(null);
+            navigate("Notes", { kind: "newNote", studentId: detail.studentId });
+          }}
+          onClose={() => setDetailId(null)}
+          onDelete={() => remove(detail)}
+          onEdit={() => {
+            setDetailId(null);
+            setEditingId(detail.id);
+          }}
+          place={placeFor(detail, availability)}
+          student={studentById(detail.studentId)}
+        />
+      ) : null}
+
+      {editing ? (
+        <LessonEditor
+          defaultDay={editing.day}
+          defaultDuration={editing.duration}
+          initial={editing}
+          lessons={lessons}
+          onClose={() => setEditingId(null)}
+          onSave={(lesson) => {
+            setLessons((current) => current.map((item) => (item.id === lesson.id ? lesson : item)));
+            setEditingId(null);
+            setDetailId(lesson.id); // back to the details, showing the changes
+          }}
+          students={students.map((student) => ({ id: student.id, name: student.name }))}
+        />
+      ) : null}
 
       {editorOpen ? (
         <LessonEditor
@@ -339,6 +356,7 @@ function LessonEditor({
   defaultDay,
   defaultStart = 9 * 60,
   defaultDuration,
+  initial,
   onClose,
   onSave,
 }: {
@@ -347,25 +365,26 @@ function LessonEditor({
   defaultDay: number;
   defaultStart?: number; // minutes after midnight; 9:00 AM when you use the Add button
   defaultDuration: number;
+  initial?: Lesson; // set when editing an existing lesson; the form starts with its values
   onClose: () => void;
   onSave: (lesson: Lesson) => void;
 }) {
   const studentIds = students.map((student) => student.id);
-  const [studentId, setStudentId] = useState(studentIds[0] ?? "");
+  const [studentId, setStudentId] = useState(initial?.studentId ?? studentIds[0] ?? "");
   const [day, setDay] = useState(WEEKDAYS[defaultDay]);
   // Start, end and duration stay in sync: change the start and the end moves with it (same length);
   // change the end or the duration and the other one updates.
-  const [start, setStart] = useState(defaultStart);
+  const [start, setStart] = useState(initial?.start ?? defaultStart);
   const [duration, setDuration] = useState(defaultDuration);
   const [durationText, setDurationText] = useState(String(defaultDuration));
-  const [type, setType] = useState(LESSON_TYPES[0]);
+  const [type, setType] = useState(initial?.type ?? LESSON_TYPES[0]);
   const end = start + duration;
 
   function changeDuration(minutes: number) {
     setDuration(minutes);
     setDurationText(String(minutes));
   }
-  const [color, setColor] = useState<LessonColor>("teal");
+  const [color, setColor] = useState<LessonColor>(initial?.color ?? "teal");
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? id;
 
   function submit() {
@@ -382,7 +401,8 @@ function LessonEditor({
       Alert.alert("Outside calendar hours", outside);
       return;
     }
-    const lesson: Lesson = { id: newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color };
+    // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
+    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -400,11 +420,11 @@ function LessonEditor({
       footer={
         <>
           <Button label="Cancel" onPress={onClose} style={{ flex: 1 }} variant="secondary" />
-          <Button label="Schedule lesson" onPress={submit} style={{ flex: 1.5 }} />
+          <Button label={initial ? "Save changes" : "Schedule lesson"} onPress={submit} style={{ flex: 1.5 }} />
         </>
       }
       onClose={onClose}
-      title="Schedule lesson"
+      title={initial ? "Edit lesson" : "Schedule lesson"}
       visible
     >
       {studentIds.length ? (
@@ -437,6 +457,59 @@ function LessonEditor({
         renderLabel={(value) => ({ teal: "Freestyle", sand: "Public", purple: "Off-ice" })[value]}
         value={color}
       />
+    </Sheet>
+  );
+}
+
+// The window that opens when you tap a lesson: everything about that slot, plus Edit, Delete
+// and Add notes. (Adding a new lesson is the Add button or tapping an empty time.)
+function LessonDetailSheet({
+  lesson,
+  student,
+  place,
+  onEdit,
+  onDelete,
+  onAddNotes,
+  onClose,
+}: {
+  lesson: Lesson;
+  student?: { name: string; focus: string };
+  place?: string;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddNotes: () => void;
+  onClose: () => void;
+}) {
+  const palette = lessonColors[lesson.color];
+  return (
+    <Sheet
+      footer={
+        <>
+          <Button label="Delete" onPress={onDelete} style={{ flex: 1 }} variant="danger" />
+          <Button icon="edit" label="Edit" onPress={onEdit} style={{ flex: 1.5 }} />
+        </>
+      }
+      onClose={onClose}
+      title="Lesson details"
+      visible
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <View style={{ width: 6, alignSelf: "stretch", borderRadius: 3, backgroundColor: palette.border }} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>{student?.name ?? "Removed student"}</Text>
+          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 3 }}>{lesson.type} lesson</Text>
+        </View>
+      </View>
+      <View style={{ gap: 12, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.borderSoft, marginBottom: 16 }}>
+        <Meta icon="calendar" text={`Every ${FULL_WEEKDAYS[lesson.day]}`} />
+        <Meta icon="clock" text={`${formatTime(lesson.start)} – ${formatTime(lesson.start + lesson.duration)} · ${lesson.duration} minutes`} />
+        {place ? <Meta icon="home" text={place} /> : null}
+        <Meta icon="notes" text={student?.focus ? `Focus: ${student.focus}` : "No focus set"} />
+      </View>
+      <Button icon="notes" label="Add lesson notes" onPress={onAddNotes} variant="secondary" />
+      <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 14 }}>
+        Tip: close this window, then drag the lesson on the calendar to move it.
+      </Text>
     </Sheet>
   );
 }
@@ -743,7 +816,7 @@ function AvailabilitySheet({
   );
 }
 
-function Meta({ icon, text }: { icon: "clock" | "calendar" | "notes"; text: string }) {
+function Meta({ icon, text }: { icon: "clock" | "calendar" | "notes" | "home"; text: string }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Icon color="#5f9195" name={icon} size={15} />
