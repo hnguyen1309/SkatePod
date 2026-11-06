@@ -6,6 +6,12 @@ SkatePod is a coach-first app for figure skating coaches: one home for each stud
 
 **Status:** Early stage personal project (discovery and prototyping). Not yet released.
 
+<p align="center">
+  <img src="docs/media/coach-flow.gif" alt="SkatePod demo: add a student with a discipline and level, schedule a Freestyle lesson, then build their program and drag an element into order" width="300">
+</p>
+
+*Demo (iOS Simulator, made-up sample data): add a student with a discipline, schedule a lesson, then build their program and drag a spin into skating order.*
+
 ## Vision
 
 Skating away from endless juggling of details, so coaches can be on the ice teaching.
