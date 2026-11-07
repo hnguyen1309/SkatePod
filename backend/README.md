@@ -73,7 +73,7 @@ A coach can only teach one lesson at a time, so a new or moved lesson can't over
 
 A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
 
-A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`) and a level from that discipline's own ladder (for example `Pre-Gold`). Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong. The full list is in `Discipline.java` and at `GET /api/disciplines`.
+A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`), a track (`CHAMPIONSHIP`, `EXCEL` or `ADULT`, the same tracks as the app's Programs panel) and a level from that discipline's own ladder (for example `Pre-Gold`). The track isn't shown on the student profile; it's there so the Programs panel can be filled in. Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong. The full list is in `Discipline.java` and at `GET /api/disciplines`.
 
 ## How the code is organized
 

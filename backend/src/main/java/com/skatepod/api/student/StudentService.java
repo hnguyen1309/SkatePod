@@ -56,17 +56,14 @@ public class StudentService {
 
     @Transactional
     public StudentResponse create(StudentRequest request) {
-        Student student = students.save(new Student(
-                request.name().trim(), blankToNull(request.focus()), request.progress(),
-                toDisciplines(request.disciplines())));
+        Student student = students.save(new Student(request.name().trim(), toDisciplines(request.disciplines())));
         return toResponse(student, List.of());
     }
 
     @Transactional
     public StudentResponse update(UUID id, StudentRequest request) {
         Student student = find(id);
-        student.update(request.name().trim(), blankToNull(request.focus()), request.progress(),
-                toDisciplines(request.disciplines()));
+        student.update(request.name().trim(), toDisciplines(request.disciplines()));
         return toResponse(student, lessons.findAllByStudentId(id));
     }
 
@@ -99,7 +96,7 @@ public class StudentService {
             if (!discipline.hasLevel(level)) {
                 throw new BadRequestException(level + " is not a level in " + discipline.getDisplayName());
             }
-            result.add(new StudentDiscipline(discipline, level));
+            result.add(new StudentDiscipline(discipline, item.track(), level));
         }
         return result;
     }
@@ -118,20 +115,16 @@ public class StudentService {
                         item.getDiscipline().getDisplayName(),
                         item.getDiscipline().getCategory(),
                         item.getDiscipline().getCategory().getDisplayName(),
+                        item.getTrack(),
+                        item.getTrack().getDisplayName(),
                         item.getLevel()))
                 .toList();
         return new StudentResponse(
                 student.getId(),
                 student.getName(),
-                student.getFocus(),
-                student.getProgress(),
                 disciplines,
                 nextLesson,
                 student.getCreatedAt(),
                 student.getUpdatedAt());
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 }

@@ -48,7 +48,7 @@ class StudentServiceTest {
     }
 
     private static StudentDisciplineRequest discipline(Discipline discipline, String level) {
-        return new StudentDisciplineRequest(discipline, level);
+        return new StudentDisciplineRequest(discipline, Track.CHAMPIONSHIP, level);
     }
 
     private void saveReturnsTheStudent() {
@@ -56,16 +56,14 @@ class StudentServiceTest {
     }
 
     @Test
-    void createTrimsInputAndTreatsBlankFocusAsEmpty() {
+    void createTrimsNameAndLevel() {
         saveReturnsTheStudent();
         when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
 
-        StudentResponse created = service.create(new StudentRequest("  Emma  ", "   ", 40,
+        StudentResponse created = service.create(new StudentRequest("  Emma  ",
                 List.of(discipline(Discipline.STANDARD_FREESKATE, " Pre-Gold "))));
 
         assertThat(created.name()).isEqualTo("Emma");
-        assertThat(created.focus()).isNull();
-        assertThat(created.progress()).isEqualTo(40);
         assertThat(created.disciplines()).extracting(StudentDisciplineResponse::level).containsExactly("Pre-Gold");
         assertThat(created.nextLesson()).isNull();
     }
@@ -75,8 +73,8 @@ class StudentServiceTest {
         saveReturnsTheStudent();
         when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
 
-        assertThat(service.create(new StudentRequest("Amelia", null, 0, null)).disciplines()).isEmpty();
-        assertThat(service.create(new StudentRequest("Amelia", null, 0, List.of())).disciplines()).isEmpty();
+        assertThat(service.create(new StudentRequest("Amelia", null)).disciplines()).isEmpty();
+        assertThat(service.create(new StudentRequest("Amelia", List.of())).disciplines()).isEmpty();
     }
 
     @Test
@@ -84,7 +82,7 @@ class StudentServiceTest {
         saveReturnsTheStudent();
         when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
 
-        StudentResponse created = service.create(new StudentRequest("Lily", null, 50, List.of(
+        StudentResponse created = service.create(new StudentRequest("Lily", List.of(
                 discipline(Discipline.PATTERN_DANCE, "Bronze"),
                 discipline(Discipline.STANDARD_FREESKATE, "Silver"))));
 
@@ -98,7 +96,7 @@ class StudentServiceTest {
 
     @Test
     void levelFromAnotherDisciplineIsRejected() {
-        StudentRequest request = new StudentRequest("Emma", null, 40,
+        StudentRequest request = new StudentRequest("Emma",
                 List.of(discipline(Discipline.STANDARD_FREESKATE, "Juvenile")));
 
         assertThatThrownBy(() -> service.create(request))
@@ -109,7 +107,7 @@ class StudentServiceTest {
 
     @Test
     void sameDisciplineTwiceIsRejected() {
-        StudentRequest request = new StudentRequest("Emma", null, 40, List.of(
+        StudentRequest request = new StudentRequest("Emma", List.of(
                 discipline(Discipline.STANDARD_FREESKATE, "Bronze"),
                 discipline(Discipline.STANDARD_FREESKATE, "Silver")));
 
@@ -132,20 +130,33 @@ class StudentServiceTest {
     @Test
     void updateReplacesFieldsAndDisciplines() {
         UUID id = UUID.randomUUID();
-        Student emma = new Student("Emma", "Axel", 40,
-                List.of(new StudentDiscipline(Discipline.STANDARD_FREESKATE, "Pre-Gold")));
+        Student emma = new Student("Emma",
+                List.of(new StudentDiscipline(Discipline.STANDARD_FREESKATE, Track.CHAMPIONSHIP, "Pre-Gold")));
         when(students.findById(id)).thenReturn(Optional.of(emma));
         when(lessons.findAllByStudentId(id)).thenReturn(List.of());
         when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
 
-        StudentResponse updated = service.update(id, new StudentRequest("Emma M", "Power pulls", 90,
-                List.of(discipline(Discipline.STANDARD_SKILLS, "Gold"))));
+        StudentResponse updated = service.update(id, new StudentRequest("Emma M",
+                List.of(new StudentDisciplineRequest(Discipline.STANDARD_SKILLS, Track.EXCEL, "Gold"))));
 
         assertThat(updated.name()).isEqualTo("Emma M");
-        assertThat(updated.progress()).isEqualTo(90);
         assertThat(updated.disciplines()).extracting(StudentDisciplineResponse::discipline)
                 .containsExactly(Discipline.STANDARD_SKILLS);
         assertThat(updated.disciplines()).extracting(StudentDisciplineResponse::level).containsExactly("Gold");
+        assertThat(updated.disciplines()).extracting(StudentDisciplineResponse::track).containsExactly(Track.EXCEL);
+    }
+
+    @Test
+    void trackComesBackWithItsName() {
+        saveReturnsTheStudent();
+        when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
+
+        StudentResponse created = service.create(new StudentRequest("Noah", List.of(
+                new StudentDisciplineRequest(Discipline.ADULT_FREESKATE, Track.ADULT, "Adult Gold"))));
+
+        StudentDisciplineResponse freeskate = created.disciplines().get(0);
+        assertThat(freeskate.track()).isEqualTo(Track.ADULT);
+        assertThat(freeskate.trackName()).isEqualTo("Adult");
     }
 
     @Test

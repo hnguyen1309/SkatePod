@@ -8,8 +8,6 @@ import java.util.UUID;
 public record StudentResponse(
         UUID id,
         String name,
-        String focus,
-        int progress,
         List<StudentDisciplineResponse> disciplines,
         NextLessonResponse nextLesson,
         Instant createdAt,
