@@ -158,7 +158,9 @@ export function Field({
   return (
     <View style={{ marginBottom: 16 }}>
       <Label>{label}</Label>
+      {/* accessibilityLabel names the box for VoiceOver, and lets the Maestro UI tests (mobile/.maestro) find it. */}
       <TextInput
+        accessibilityLabel={label}
         autoCapitalize={autoCapitalize}
         keyboardType={keyboardType}
         multiline={multiline}
@@ -177,6 +179,7 @@ export function SearchBar({ value, onChangeText, placeholder }: { value: string;
     <View style={styles.search}>
       <Icon color={colors.muted} name="search" size={17} />
       <TextInput
+        accessibilityLabel={placeholder}
         autoCapitalize="none"
         autoCorrect={false}
         clearButtonMode="while-editing"

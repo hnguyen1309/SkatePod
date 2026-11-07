@@ -1,0 +1,69 @@
+# Students: filter, add (with the name check), add a discipline and level, edit, delete.
+appId: host.exp.Exponent
+name: Students add, edit, delete
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Students"
+
+# Search and category filter.
+- tapOn: "Search by student, discipline or level..."
+- inputText: "Adult"
+- assertVisible: ".*Noah Bennett.*"
+- assertNotVisible: ".*Emma Miller.*"
+- eraseText: 10
+- pressKey: Enter
+- assertVisible: ".*Emma Miller.*"
+
+# Saving without a name shows an alert.
+- tapOn: "Add student"
+- assertVisible: "Disciplines and levels"
+- tapOn: "Save student"
+- assertVisible: "Add a name"
+- tapOn: "OK"
+
+# Add a student with one discipline.
+- tapOn:
+    text: "Student name"
+    index: 1
+- inputText: "Test Skater"
+- pressKey: Enter
+- tapOn:
+    text: "Add a discipline"
+    index: 1
+- tapOn: "Learn to Skate · Learn to Skate"
+- assertVisible: "Level"
+- tapOn: "Save student"
+- scrollUntilVisible:
+    element: ".*Test Skater.*"
+- assertVisible: ".*Test Skater.*Not scheduled.*"
+
+# The detail sheet, then edit the name.
+- tapOn: ".*Test Skater.*"
+- assertVisible: "Training snapshot"
+- assertVisible: "Not started"
+- tapOn: "Edit profile"
+- assertVisible: "Edit student"
+- tapOn:
+    text: "Student name"
+    index: 1
+- eraseText: 20
+- inputText: "Test Edited"
+- pressKey: Enter
+- tapOn: "Save student"
+- scrollUntilVisible:
+    element: ".*Test Edited.*"
+- assertNotVisible: ".*Test Skater.*"
+
+# Delete asks first, then removes the student.
+- scrollUntilVisible:
+    element: ".*Test Edited.*"
+- tapOn: ".*Test Edited.*"
+- tapOn: "Edit profile"
+- tapOn: "Delete"
+- assertVisible: "Delete student\\?"
+# The alert's Delete comes first in the screen tree; the sheet's own Delete button is second.
+- tapOn:
+    text: "Delete"
+    index: 0
+- assertNotVisible: ".*Test Edited.*"

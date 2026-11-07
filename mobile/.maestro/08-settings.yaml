@@ -1,0 +1,33 @@
+# Settings: change the coach name and default lesson length, save, and see them used elsewhere.
+appId: host.exp.Exponent
+name: Settings
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Settings"
+- assertVisible: "Coach profile"
+
+- tapOn:
+    text: "Coach name"
+    index: 1
+- eraseText: 20
+- inputText: "Jordan Test"
+- pressKey: Enter
+- tapOn: "60 minutes"
+- scrollUntilVisible:
+    element: "Save settings"
+- tapOn: "Save settings"
+- assertVisible: "Changes saved"
+
+# Home greets the new name.
+- tapOn: "Home"
+- assertVisible: "Good (morning|afternoon|evening), Jordan"
+
+# A new lesson starts with the new default length.
+- tapOn: "Add lesson"
+- assertVisible: "Schedule lesson"
+- assertVisible: "60"
+- tapOn: "Cancel"
+
+# Export backup opens the iOS share sheet, which runs outside the app where Maestro can't see it,
+# so it's checked by hand (see UI-TEST-FINDINGS.md).

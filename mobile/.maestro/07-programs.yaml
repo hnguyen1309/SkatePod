@@ -1,0 +1,127 @@
+# Programs: pick a student, change track and level, add, edit and remove elements, including a combination.
+appId: host.exp.Exponent
+name: Programs
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Programs"
+- assertVisible: "Program components"
+
+# "New program" asks first. (Each student starts with 4 starter elements, and a new program brings them back.)
+- tapOn: "New program"
+- assertVisible: "Start a new program\\?"
+- tapOn: "Start new"
+- assertVisible: "Untitled program"
+
+# Clear the starter elements so the sheet is empty.
+- scrollUntilVisible:
+    element: "Add element"
+- repeat:
+    times: 10
+    while:
+      visible: "Remove"
+    commands:
+      - tapOn:
+          text: "Remove"
+          index: 0
+- assertVisible: "Tap Add element to begin the sheet."
+- scrollUntilVisible:
+    element: "Program builder"
+    direction: UP
+
+# Track and level come from dropdowns.
+- tapOn:
+    text: "Track"
+    index: 1
+- tapOn: "Adult"
+- tapOn:
+    text: "Level"
+    index: 1
+- tapOn: "Adult Gold"
+- assertVisible: "Adult Gold"
+
+# Add a single jump.
+- scrollUntilVisible:
+    element: "Add element"
+- tapOn: "Add element"
+- tapOn:
+    text: "Type"
+    index: 1
+- tapOn: "Jumps"
+- tapOn:
+    text: "Element"
+    index: 1
+- tapOn: "Single Axel"
+- tapOn:
+    text: "Add"
+    index: 0
+- assertVisible: "1A"
+- assertVisible: "Single Axel"
+
+# Add a 2 jump combination (both moves must be picked before Add works).
+- scrollUntilVisible:
+    element: "Add element"
+- tapOn: "Add element"
+- tapOn:
+    text: "Type"
+    index: 1
+- tapOn: "Jumps"
+- tapOn:
+    text: "Element"
+    index: 1
+- scrollUntilVisible:
+    element: "2 Jump Combination"
+- tapOn: "2 Jump Combination"
+- tapOn:
+    text: "Move 1"
+    index: 1
+- tapOn: "Double Toe Loop"
+- tapOn:
+    text: "Move 2"
+    index: 1
+- tapOn: "Double Toe Loop"
+- tapOn:
+    text: "Add"
+    index: 0
+- assertVisible: "2T\\+2T"
+
+# Edit the first element into a spin.
+- scrollUntilVisible:
+    element: "1A"
+    direction: UP
+- tapOn:
+    text: "Edit"
+    index: 0
+- assertVisible: "Edit element 01"
+- tapOn:
+    text: "Type"
+    index: 1
+- tapOn: "Spins"
+- tapOn:
+    text: "Element"
+    index: 1
+- tapOn: "Camel Spin"
+- tapOn: "Save"
+- assertVisible: "CSp"
+- assertNotVisible: "Single Axel"
+
+# Remove both.
+- tapOn:
+    text: "Remove"
+    index: 0
+- tapOn:
+    text: "Remove"
+    index: 0
+- assertVisible: "Tap Add element to begin the sheet."
+
+# The program is kept per student: Lily's sheet is still empty.
+- scrollUntilVisible:
+    element: "Program builder"
+    direction: UP
+- tapOn:
+    text: "Student"
+    index: 1
+- tapOn: "Lily Kim"
+- scrollUntilVisible:
+    element: "StSq"
+- assertNotVisible: "CSp"

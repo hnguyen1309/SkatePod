@@ -1,0 +1,31 @@
+# Opens SkatePod in Expo Go and puts the sample data back, so every flow starts the same way.
+# EXPO_URL comes from run-ui-tests.sh (default exp://127.0.0.1:8081, the local Expo server).
+appId: host.exp.Exponent
+---
+- stopApp: host.exp.Exponent
+# Opening the link right after Expo Go relaunches sometimes times out on the Simulator, so wait a moment and retry.
+- waitForAnimationToEnd:
+    timeout: 3000
+- retry:
+    maxRetries: 2
+    commands:
+      - openLink: ${EXPO_URL || "exp://127.0.0.1:8081"}
+# Expo Go sometimes shows its developer-menu tip on first open; dismiss it if it's there.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+# Wait for the app itself (Expo Go's loading screen also shows the name "SkatePod").
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 90000
+# Reset to sample data from Settings (this also checks the reset itself works).
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element: "Reset to sample data"
+- tapOn: "Reset to sample data"
+- assertVisible: "Reset to sample data?"
+- tapOn: "Reset"
+- tapOn: "Home"
+- assertVisible: "Coach dashboard"

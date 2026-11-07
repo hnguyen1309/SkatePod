@@ -1,0 +1,44 @@
+# Home: greeting, today's schedule, student search, and links to other tabs.
+appId: host.exp.Exponent
+name: Dashboard
+tags: [smoke]
+---
+- runFlow: subflows/start.yaml
+
+- assertVisible: "Good (morning|afternoon|evening), Mia"
+- assertVisible: "Today’s schedule"
+- assertVisible: "Your students · 6"
+
+# Search narrows the list and shows a message when nothing matches.
+- tapOn: "Search students..."
+- inputText: "Lily"
+- assertVisible: ".*Lily Kim.*"
+- assertNotVisible: ".*Sofia Chen.*"
+- eraseText: 10
+- inputText: "zzz"
+- assertVisible: "No students match “zzz”."
+- eraseText: 10
+- pressKey: Enter
+
+# A student card opens that student on the Students tab.
+- tapOn: ".*Emma Miller.*"
+- assertVisible: "Training snapshot"
+- tapOn: "Close"
+
+# "View all" goes to Students, "Calendar" link goes to Calendar.
+- tapOn: "Home"
+- tapOn: "View all"
+- assertVisible: "Student management"
+- tapOn: "Home"
+- scrollUntilVisible:
+    element: ".*(Public|Freestyle|Off-ice) · \\d+m.*"
+- tapOn:
+    text: "Calendar"
+    index: 0
+- assertVisible: "Schedule"
+
+# The header "Add lesson" on Home opens the lesson editor on the Calendar.
+- tapOn: "Home"
+- tapOn: "Add lesson"
+- assertVisible: "Schedule lesson"
+- tapOn: "Cancel"
