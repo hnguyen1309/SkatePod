@@ -32,6 +32,14 @@ npx expo start
 
 Your Mac and iPhone need to be on the same Wi-Fi. If they can’t see each other, run `npx expo start --tunnel`.
 
+## Run the tests
+
+```bash
+npm test
+```
+
+This runs the unit tests in `src/*.test.ts` (for example `src/data.test.ts`) with Node's built-in test runner. They check the app's rules without opening the app, and GitHub runs them on every push too.
+
 ## Why a setup script?
 
 `setup.sh` installs the newest Expo SDK and lets Expo choose package versions that match it, so the app keeps working with the current Expo Go app. After it runs, `package.json` will list the exact versions. Commit that change.

@@ -7,7 +7,8 @@
     "setup": "sh ./setup.sh",
     "start": "expo start",
     "ios": "expo start --ios",
-    "android": "expo start --android"
+    "android": "expo start --android",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

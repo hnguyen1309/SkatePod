@@ -31,7 +31,8 @@ jobs:
       # `npm ci` installs exactly the versions in package-lock.json (like a clean `npm install`).
       - run: npm ci
       - run: npx tsc --noEmit
-      # Later: add `npm test` here once the Jest unit tests exist.
+      # Unit tests for the rules in src/data.ts (Node's built-in test runner, no extra installs).
+      - run: npm test
 
   backend:
     name: Backend tests

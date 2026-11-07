@@ -445,6 +445,30 @@ export function findLessonNote(notes: Note[], lesson: Pick<Lesson, "id" | "stude
   return sameDay.find((note) => note.lessonId === lesson.id) ?? sameDay.find((note) => !note.lessonId);
 }
 
+/**
+ * After a lesson is edited, moved or resized, the note written for it (that week) follows the change:
+ * new type, length, date and time. The title changes too, but only if it's the one the app made up
+ * ("Freestyle lesson"); a title the coach typed is kept. Returns the notes unchanged if there's no note.
+ * `beforeDate`/`afterDate` are when the lesson falls in the week on screen, before and after the change.
+ */
+export function syncLessonNote(notes: Note[], before: Lesson, after: Lesson, beforeDate: Date, afterDate: Date): Note[] {
+  const note = findLessonNote(notes, before, beforeDate);
+  if (!note) return notes;
+  const autoTitle = note.title === `${note.lessonType} lesson`;
+  return notes.map((item) =>
+    item.id === note.id
+      ? {
+          ...item,
+          lessonId: after.id,
+          date: afterDate.toISOString(),
+          lessonType: after.type,
+          duration: `${after.duration} minutes`,
+          title: autoTitle ? `${after.type} lesson` : item.title,
+        }
+      : item,
+  );
+}
+
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }

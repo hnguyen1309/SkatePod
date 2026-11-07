@@ -221,7 +221,13 @@ function NoteEditor({
         options={LESSON_TYPES}
         value={draft.lessonType}
       />
-      <PickerField label="Duration" onChange={(duration: string) => set({ duration })} options={DURATIONS} value={draft.duration} />
+      {/* A calendar lesson can be any length (e.g. 105 minutes), so show that length as a choice too. */}
+      <PickerField
+        label="Duration"
+        onChange={(duration: string) => set({ duration })}
+        options={DURATIONS.includes(draft.duration) ? DURATIONS : [...DURATIONS, draft.duration]}
+        value={draft.duration}
+      />
       <PickerField label="Overall session" onChange={(overall: string) => set({ overall })} options={OVERALL} value={draft.overall} />
 
       <Field label="Session focus" onChangeText={(focus) => set({ focus })} placeholder="Skills, program sections, or goals covered..." value={draft.focus} />

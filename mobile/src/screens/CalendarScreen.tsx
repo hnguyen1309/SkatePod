@@ -12,6 +12,7 @@ import {
   findBlockOverlap,
   findClash,
   findLessonNote,
+  syncLessonNote,
   formatHour,
   formatTime,
   newId,
@@ -41,7 +42,7 @@ function formatRange(offset: number) {
 }
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { lessons, setLessons, availability, setAvailability, notes, students, studentById, settings } = useStore();
+  const { lessons, setLessons, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
@@ -56,6 +57,21 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [draggingDay, setDraggingDay] = useState<number | null>(null);
 
   // Saves a dragged or resized lesson, unless the new time clashes with another lesson.
+  // The date and time a weekly lesson falls on in the week on screen.
+  function dateOf(lesson: Pick<Lesson, "day" | "start">) {
+    const date = new Date(dates[lesson.day].date);
+    date.setHours(Math.floor(lesson.start / 60), lesson.start % 60, 0, 0);
+    return date;
+  }
+
+  // Saves a changed lesson. If a note was already written for it this week, the note follows the change
+  // (type, length, day and time), so the coach doesn't end up with a note that says the old details.
+  function saveLesson(before: Lesson, after: Lesson) {
+    setLessons((current) => current.map((item) => (item.id === before.id ? after : item)));
+    setNotes((current) => syncLessonNote(current, before, after, dateOf(before), dateOf(after)));
+  }
+
+
   function moveLesson(lesson: Lesson, changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) {
     const moved = { ...lesson, ...changes };
     if (moved.day === lesson.day && moved.start === lesson.start && moved.duration === lesson.duration) return;
@@ -65,7 +81,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
       Alert.alert("That time is taken", `${name} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)}. The lesson stayed where it was.`);
       return;
     }
-    setLessons((current) => current.map((item) => (item.id === lesson.id ? moved : item)));
+    saveLesson(lesson, moved);
   }
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
@@ -329,7 +345,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           lessons={lessons}
           onClose={() => setEditingId(null)}
           onSave={(lesson) => {
-            setLessons((current) => current.map((item) => (item.id === lesson.id ? lesson : item)));
+            saveLesson(editing, lesson);
             setEditingId(null);
             setDetailId(lesson.id); // back to the details, showing the changes
           }}

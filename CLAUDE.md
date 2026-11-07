@@ -42,7 +42,8 @@ Mobile (run from `mobile/`):
 ```bash
 sh setup.sh                   # one time: installs expo@latest, then `npx expo install` matching versions
 npx expo start                # front end: scan the QR code with Expo Go (add --tunnel if the phone can't connect)
-npx tsc --noEmit              # type check (there's no test runner or linter)
+npx tsc --noEmit              # type check (there's no linter)
+npm test                      # unit tests for src/data.ts (Node's built-in test runner, src/**/*.test.ts)
 ```
 
 ## Backend architecture
@@ -83,6 +84,7 @@ These are plain JUnit 5 unit tests with AssertJ and Mockito (`@ExtendWith(Mockit
 - `src/data.ts` holds types, sample data and the skating element catalog. `src/theme.ts` holds colors, `lessonColors`, radius and shadow. Shared UI pieces (`Screen`, `Card`, `Button`, `Field`, `Sheet`, `Chips` and so on) are in `src/components/ui.tsx`, and icons are in `Icon.tsx`.
 - Use `Dropdown` (in `ui.tsx`) for any value the API only accepts from a fixed list. It opens its options inline, because a pop-up can't open on top of a `Sheet` on iOS. Student disciplines and levels use it, with no free text. `DisciplineBadges` shows a student's disciplines as pills colored by `categoryColors` in `theme.ts`.
 - **Requirement links:** `requirementLinks` in `data.ts` links the Programs screen to official U.S. Figure Skating charts for the student's track and level. Link to the rules, don't copy them or enforce element limits, because they change by season and have exceptions. When charts change, update the URLs and `REQUIREMENTS_CHECKED`.
+- **Unit tests:** `src/*.test.ts` files run with Node's built-in runner (`node:test`, `node:assert/strict`), no Jest yet. They can only import files with no React Native imports (like `data.ts`), and they import with the `.ts` extension. Keep business rules in `data.ts` as plain functions (e.g. `syncLessonNote`) so they can be tested.
 - Styling uses inline style objects and `theme.ts` tokens. There's no styling library.
 - **Model mismatch with the backend:** the mobile `Lesson` is still weekly (`day` 0 = Monday, `start` = minutes after midnight, e.g. 570 = 9:30 AM). The backend uses dated lessons. Both work out the next lesson from the calendar and never store it: `findNextLesson`/`nextLessonLabel` in `data.ts` mirror `NextLessonCalculator`, and the student editor shows it read-only. Keep this in mind when connecting the two.
 
