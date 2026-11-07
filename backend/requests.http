@@ -59,53 +59,151 @@ Content-Type: application/json
   ]
 }
 
-### List all lessons in calendar order
+### List all weekly lessons, Monday first (each shows its place, if it's inside an availability block)
 GET {{baseUrl}}/lessons
 
 ### List one student's lessons
 GET {{baseUrl}}/lessons?studentId=11111111-1111-1111-1111-000000000001
 
-### Schedule a lesson
+### Add a weekly lesson (startDate left out = starts today; no endDate = keeps going)
 POST {{baseUrl}}/lessons
 Content-Type: application/json
 
 {
-  "studentId": "11111111-1111-1111-1111-000000000004",
-  "date": "2026-11-06",
+  "studentId": "11111111-1111-1111-1111-000000000006",
+  "dayOfWeek": "SUNDAY",
   "startTime": "16:30",
   "durationMinutes": 45,
-  "type": "Freestyle",
-  "color": "TEAL"
+  "type": "Freestyle"
 }
 
-### Double booking → 409 (send "Schedule a lesson" above first: this one starts during it)
+### Double booking → 409 (send the one above first: this one starts during it, every Sunday)
 POST {{baseUrl}}/lessons
 Content-Type: application/json
 
 {
   "studentId": "11111111-1111-1111-1111-000000000001",
-  "date": "2026-11-06",
+  "dayOfWeek": "SUNDAY",
   "startTime": "17:00",
   "durationMinutes": 30,
-  "type": "Public",
-  "color": "SAND"
+  "type": "Public"
 }
 
-### Invalid lesson type example → 400 (only Public, Freestyle or Off-ice)
+### A lesson for a set stretch of weeks (Sofia, Fridays in January)
 POST {{baseUrl}}/lessons
 Content-Type: application/json
 
 {
   "studentId": "11111111-1111-1111-1111-000000000004",
-  "date": "2026-11-06",
+  "dayOfWeek": "FRIDAY",
+  "startTime": "07:00",
+  "durationMinutes": 60,
+  "type": "Off-ice",
+  "startDate": "2027-01-01",
+  "endDate": "2027-01-29"
+}
+
+### Invalid lesson type → 400 (only Public, Freestyle or Off-ice)
+POST {{baseUrl}}/lessons
+Content-Type: application/json
+
+{
+  "studentId": "11111111-1111-1111-1111-000000000004",
+  "dayOfWeek": "SUNDAY",
   "startTime": "16:30",
   "durationMinutes": 45,
-  "type": "Moves",
-  "color": "SAND"
+  "type": "Moves"
 }
 
 ### Not found example → 404
 GET {{baseUrl}}/students/00000000-0000-0000-0000-000000000000
 
-### Delete a lesson
-DELETE {{baseUrl}}/lessons/22222222-2222-2222-2222-000000000007
+### Delete a lesson (Jonah's Friday off-ice lesson; its notes stay in the history)
+DELETE {{baseUrl}}/lessons/22222222-2222-2222-2222-000000000006
+
+### Availability blocks, Monday first
+GET {{baseUrl}}/availability
+
+### Add an availability block (place is optional)
+POST {{baseUrl}}/availability
+Content-Type: application/json
+
+{
+  "dayOfWeek": "WEDNESDAY",
+  "startTime": "14:00",
+  "endTime": "17:00",
+  "place": "North Rink"
+}
+
+### Overlapping block → 409 (Tuesday 3–6 PM at North Rink is already there)
+POST {{baseUrl}}/availability
+Content-Type: application/json
+
+{
+  "dayOfWeek": "TUESDAY",
+  "startTime": "17:00",
+  "endTime": "19:00"
+}
+
+### Training history, newest first (adds entries for lessons that started since the last check)
+GET {{baseUrl}}/notes
+
+### One student's history in a date range
+GET {{baseUrl}}/notes?studentId=11111111-1111-1111-1111-000000000001&from=2026-11-01T00:00:00Z
+
+### Add a past lesson (no lessonId; the date can't be in the future)
+POST {{baseUrl}}/notes
+Content-Type: application/json
+
+{
+  "studentId": "11111111-1111-1111-1111-000000000003",
+  "date": "2026-11-01T15:00:00Z",
+  "title": "Extra session",
+  "lessonType": "Public",
+  "durationMinutes": 45,
+  "overall": "Steady",
+  "focus": "Crossovers",
+  "observations": "Better knee bend on the left side.",
+  "nextSteps": "Two sets each way next time.",
+  "skills": ["Backward crossovers"],
+  "shared": false
+}
+
+### Lily's saved program (Excel track)
+GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000002/program
+
+### Noah has no program yet: a starting program on his Adult track (saved: false)
+GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000005/program
+
+### Save Emma's program (creates or replaces it)
+PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001/program
+Content-Type: application/json
+
+{
+  "musicTitle": "Swan Lake",
+  "artist": "Tchaikovsky",
+  "duration": "2:40",
+  "track": "CHAMPIONSHIP",
+  "level": "Juvenile",
+  "elements": ["2A", "FCCoSp", "2Lz", "StSq", "CCoSp"],
+  "paths": [[{ "x": 40, "y": 60 }, { "x": 120, "y": 80 }]],
+  "placements": [{ "id": "p1", "code": "2A", "x": 120, "y": 80 }]
+}
+
+### Level from another track → 400
+PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001/program
+Content-Type: application/json
+
+{
+  "musicTitle": "Swan Lake",
+  "duration": "2:40",
+  "track": "EXCEL",
+  "level": "Juvenile",
+  "elements": ["2A"]
+}
+
+### Tracks with their levels, and every program element
+GET {{baseUrl}}/tracks
+
+###
+GET {{baseUrl}}/elements

@@ -7,14 +7,21 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.skatepod.api.availability.AvailabilityBlock;
+import com.skatepod.api.availability.AvailabilityBlockRepository;
+import com.skatepod.api.common.BadRequestException;
 import com.skatepod.api.common.ConflictException;
 import com.skatepod.api.common.NotFoundException;
 import com.skatepod.api.lesson.dto.LessonRequest;
 import com.skatepod.api.lesson.dto.LessonResponse;
 import com.skatepod.api.student.Student;
 import com.skatepod.api.student.StudentRepository;
+import java.time.Clock;
+import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,110 +40,158 @@ class LessonServiceTest {
     @Mock
     private StudentRepository students;
 
-    private LessonService service;
-    private static final LocalDate MONDAY = LocalDate.of(2026, 10, 26);
+    @Mock
+    private AvailabilityBlockRepository availability;
 
+    private LessonService service;
+
+    // "Today" is Thursday, October 22, 2026.
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 22);
+    private static final DayOfWeek MONDAY = DayOfWeek.MONDAY;
+
+    private final UUID studentId = UUID.randomUUID();
     private final Student emma = new Student("Emma", List.of());
+    private final Student lily = new Student("Lily", List.of());
 
     @BeforeEach
     void setUp() {
-        service = new LessonService(lessons, students);
+        Clock fixed = Clock.fixed(Instant.parse("2026-10-22T12:00:00Z"), ZoneOffset.UTC);
+        service = new LessonService(lessons, students, availability, fixed);
+    }
+
+    private LessonRequest request(DayOfWeek day, LocalTime start, int minutes, String type) {
+        return new LessonRequest(studentId, day, start, minutes, type, null, null);
+    }
+
+    private void emmaExists() {
+        when(students.findById(studentId)).thenReturn(Optional.of(emma));
+    }
+
+    private void saveReturnsTheLesson() {
+        when(lessons.save(any(Lesson.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
     void createForUnknownStudentThrowsAndSavesNothing() {
-        UUID studentId = UUID.randomUUID();
         when(students.findById(studentId)).thenReturn(Optional.empty());
-        LessonRequest request = new LessonRequest(studentId, LocalDate.of(2026, 10, 26), LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL);
 
-        assertThatThrownBy(() -> service.create(request)).isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.create(request(MONDAY, LocalTime.of(9, 0), 45, "Freestyle")))
+                .isInstanceOf(NotFoundException.class);
         verify(lessons, never()).save(any());
     }
 
     @Test
-    void createSavesLessonForStudent() {
-        UUID studentId = UUID.randomUUID();
-        when(students.findById(studentId)).thenReturn(Optional.of(emma));
-        when(lessons.save(any(Lesson.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    void createStartsTodayWhenNoStartDateIsGivenAndColorFollowsType() {
+        emmaExists();
+        saveReturnsTheLesson();
 
-        LessonResponse created = service.create(
-                new LessonRequest(studentId, LocalDate.of(2026, 10, 23), LocalTime.of(7, 30), 60, " Public ", LessonColor.SAND));
+        LessonResponse created = service.create(request(DayOfWeek.FRIDAY, LocalTime.of(7, 30), 60, " Public "));
 
         assertThat(created.studentName()).isEqualTo("Emma");
-        assertThat(created.date()).isEqualTo(LocalDate.of(2026, 10, 23));
-        assertThat(created.startTime()).isEqualTo(LocalTime.of(7, 30));
+        assertThat(created.dayOfWeek()).isEqualTo(DayOfWeek.FRIDAY);
         assertThat(created.type()).isEqualTo("Public");
+        assertThat(created.color()).isEqualTo(LessonColor.SAND);
+        assertThat(created.startDate()).isEqualTo(TODAY);
+        assertThat(created.endDate()).isNull();
     }
 
     @Test
-    void createOverlappingAnotherLessonThrowsConflictAndSavesNothing() {
-        UUID studentId = UUID.randomUUID();
-        Student lily = new Student("Lily", List.of());
-        when(students.findById(studentId)).thenReturn(Optional.of(emma));
-        // Lily already skates 9:00-9:45 that day, so Emma at 9:30 clashes.
-        when(lessons.findAllByDate(MONDAY)).thenReturn(List.of(
-                new Lesson(lily, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL)));
+    void newLessonCantStartBeforeToday() {
+        emmaExists();
+        LessonRequest request = new LessonRequest(studentId, MONDAY, LocalTime.of(9, 0), 45, "Freestyle",
+                TODAY.minusDays(1), null);
 
-        assertThatThrownBy(() -> service.create(
-                new LessonRequest(studentId, MONDAY, LocalTime.of(9, 30), 30, "Public", LessonColor.SAND)))
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("can't start before today");
+    }
+
+    @Test
+    void endDateCantBeBeforeStartDate() {
+        emmaExists();
+        LessonRequest request = new LessonRequest(studentId, MONDAY, LocalTime.of(9, 0), 45, "Freestyle",
+                TODAY.plusDays(10), TODAY.plusDays(3));
+
+        assertThatThrownBy(() -> service.create(request)).isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void overlappingAnotherStudentsLessonOnTheSameWeekdayIsAConflict() {
+        emmaExists();
+        // Lily already skates every Monday 9:00-9:45, so Emma at 9:30 clashes.
+        when(lessons.findAllByDayOfWeek(MONDAY)).thenReturn(List.of(
+                new Lesson(lily, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", null, null)));
+
+        assertThatThrownBy(() -> service.create(request(MONDAY, LocalTime.of(9, 30), 30, "Public")))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining("Lily has a lesson at 09:00");
+                .hasMessageContaining("Lily has a lesson every MONDAY at 09:00");
         verify(lessons, never()).save(any());
     }
 
     @Test
-    void createStartingBeforeAnotherLessonButRunningIntoItThrowsConflict() {
-        UUID studentId = UUID.randomUUID();
-        when(students.findById(studentId)).thenReturn(Optional.of(emma));
-        when(lessons.findAllByDate(MONDAY)).thenReturn(List.of(
-                new Lesson(emma, MONDAY, LocalTime.of(10, 0), 45, "Freestyle", LessonColor.TEAL)));
+    void startingBeforeAnotherLessonButRunningIntoItIsAConflict() {
+        emmaExists();
+        when(lessons.findAllByDayOfWeek(MONDAY)).thenReturn(List.of(
+                new Lesson(emma, MONDAY, LocalTime.of(10, 0), 45, "Freestyle", null, null)));
 
         // 9:30 + 60 minutes ends at 10:30, after the 10:00 lesson starts.
-        assertThatThrownBy(() -> service.create(
-                new LessonRequest(studentId, MONDAY, LocalTime.of(9, 30), 60, "Public", LessonColor.SAND)))
+        assertThatThrownBy(() -> service.create(request(MONDAY, LocalTime.of(9, 30), 60, "Public")))
                 .isInstanceOf(ConflictException.class);
     }
 
     @Test
-    void createBackToBackWithAnotherLessonIsAllowed() {
-        UUID studentId = UUID.randomUUID();
-        when(students.findById(studentId)).thenReturn(Optional.of(emma));
-        when(lessons.findAllByDate(MONDAY)).thenReturn(List.of(
-                new Lesson(emma, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL)));
-        when(lessons.save(any(Lesson.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    void backToBackIsAllowed() {
+        emmaExists();
+        saveReturnsTheLesson();
+        when(lessons.findAllByDayOfWeek(MONDAY)).thenReturn(List.of(
+                new Lesson(emma, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", null, null)));
 
-        // Starts the minute the 9:00 lesson ends.
-        LessonResponse created = service.create(
-                new LessonRequest(studentId, MONDAY, LocalTime.of(9, 45), 30, "Public", LessonColor.SAND));
+        LessonResponse created = service.create(request(MONDAY, LocalTime.of(9, 45), 30, "Public"));
 
         assertThat(created.startTime()).isEqualTo(LocalTime.of(9, 45));
     }
 
     @Test
-    void updateDoesNotClashWithItself() {
-        UUID studentId = UUID.randomUUID();
-        UUID lessonId = UUID.randomUUID();
-        Lesson existing = new Lesson(emma, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", LessonColor.TEAL);
-        when(lessons.findById(lessonId)).thenReturn(Optional.of(existing));
-        when(students.findById(studentId)).thenReturn(Optional.of(emma));
-        when(lessons.findAllByDate(MONDAY)).thenReturn(List.of(existing));
+    void sameTimeIsFineWhenTheDatesNeverMeet() {
+        emmaExists();
+        saveReturnsTheLesson();
+        // Lily's Monday 9:00 lesson ended last week, so the slot is free again from today.
+        when(lessons.findAllByDayOfWeek(MONDAY)).thenReturn(List.of(
+                new Lesson(lily, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", TODAY.minusDays(60), TODAY.minusDays(7))));
 
-        // Making the same lesson 15 minutes longer only overlaps its old self.
-        LessonResponse updated = service.update(lessonId,
-                new LessonRequest(studentId, MONDAY, LocalTime.of(9, 0), 60, "Freestyle", LessonColor.TEAL));
+        LessonResponse created = service.create(request(MONDAY, LocalTime.of(9, 0), 45, "Freestyle"));
 
-        assertThat(updated.durationMinutes()).isEqualTo(60);
+        assertThat(created.startTime()).isEqualTo(LocalTime.of(9, 0));
     }
 
     @Test
-    void listIsInCalendarOrder() {
-        Lesson nextMonth = new Lesson(emma, LocalDate.of(2026, 11, 2), LocalTime.of(7, 0), 45, "Off-ice", LessonColor.PURPLE);
-        Lesson mondayLate = new Lesson(emma, LocalDate.of(2026, 10, 26), LocalTime.of(15, 0), 45, "Public", LessonColor.SAND);
-        Lesson mondayEarly = new Lesson(emma, LocalDate.of(2026, 10, 26), LocalTime.of(7, 0), 45, "Freestyle", LessonColor.TEAL);
-        when(lessons.findAll()).thenReturn(List.of(nextMonth, mondayLate, mondayEarly));
+    void updateDoesNotClashWithItselfAndKeepsItsStartDate() {
+        UUID lessonId = UUID.randomUUID();
+        LocalDate startedInSeptember = LocalDate.of(2026, 9, 7);
+        Lesson existing = new Lesson(emma, MONDAY, LocalTime.of(9, 0), 45, "Freestyle", startedInSeptember, null);
+        when(lessons.findById(lessonId)).thenReturn(Optional.of(existing));
+        emmaExists();
+        when(lessons.findAllByDayOfWeek(MONDAY)).thenReturn(List.of(existing));
+
+        // 15 minutes longer only overlaps its old self. No startDate sent, so the old one stays (in the past is fine).
+        LessonResponse updated = service.update(lessonId, request(MONDAY, LocalTime.of(9, 0), 60, "Freestyle"));
+
+        assertThat(updated.durationMinutes()).isEqualTo(60);
+        assertThat(updated.startDate()).isEqualTo(startedInSeptember);
+    }
+
+    @Test
+    void listIsInWeekOrderWithPlaces() {
+        Lesson saturday = new Lesson(emma, DayOfWeek.SATURDAY, LocalTime.of(9, 0), 60, "Public", null, null);
+        Lesson mondayLate = new Lesson(emma, MONDAY, LocalTime.of(15, 0), 45, "Off-ice", null, null);
+        Lesson mondayEarly = new Lesson(emma, MONDAY, LocalTime.of(7, 0), 45, "Freestyle", null, null);
+        when(lessons.findAll()).thenReturn(List.of(saturday, mondayLate, mondayEarly));
+        when(availability.findAll()).thenReturn(List.of(
+                new AvailabilityBlock(DayOfWeek.SATURDAY, LocalTime.of(8, 0), LocalTime.of(12, 0), "South Rink")));
 
         List<LessonResponse> result = service.list(null);
 
-        assertThat(result).extracting(LessonResponse::type).containsExactly("Freestyle", "Public", "Off-ice");
+        assertThat(result).extracting(LessonResponse::type).containsExactly("Freestyle", "Off-ice", "Public");
+        assertThat(result).extracting(LessonResponse::place).containsExactly(null, null, "South Rink");
     }
 }

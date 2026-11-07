@@ -55,36 +55,59 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 
 | Method | Path | What it does |
 | --- | --- | --- |
-| GET | `/api/students` | List students, each with their next lesson |
+| GET | `/api/students` | List students A to Z, each with their next lesson |
 | GET | `/api/students/{id}` | One student |
 | POST | `/api/students` | Create a student → 201 |
 | PUT | `/api/students/{id}` | Update a student |
-| DELETE | `/api/students/{id}` | Delete a student and their lessons → 204 |
+| DELETE | `/api/students/{id}` | Delete a student with their lessons, notes and program → 204 |
 | GET | `/api/disciplines` | Every discipline with its category and levels (lowest first) |
-| GET | `/api/lessons?studentId=` | List lessons in calendar order (optionally for one student) |
+| GET | `/api/lessons?studentId=` | List weekly lessons, Monday first (optionally for one student) |
 | GET | `/api/lessons/{id}` | One lesson |
-| POST | `/api/lessons` | Schedule a lesson → 201 |
-| PUT | `/api/lessons/{id}` | Update a lesson |
-| DELETE | `/api/lessons/{id}` | Delete a lesson → 204 |
+| POST | `/api/lessons` | Add a weekly lesson → 201 |
+| PUT | `/api/lessons/{id}` | Change a lesson |
+| DELETE | `/api/lessons/{id}` | Delete a lesson (its notes stay in the history) → 204 |
+| GET | `/api/availability` | List availability blocks, Monday first |
+| POST | `/api/availability` | Add a block → 201 |
+| PUT | `/api/availability/{id}` | Change a block |
+| DELETE | `/api/availability/{id}` | Delete a block → 204 |
+| GET | `/api/notes?studentId=&from=&to=` | The training history, newest first (fills in new entries first) |
+| GET | `/api/notes/{id}` | One note |
+| POST | `/api/notes` | Add a note (for example "Add a past lesson") → 201 |
+| PUT | `/api/notes/{id}` | Change a note |
+| DELETE | `/api/notes/{id}` | Delete a note for good → 204 |
+| GET | `/api/students/{id}/program` | The student's program, or a starting program (`saved: false`) |
+| PUT | `/api/students/{id}/program` | Save the student's program (creates or replaces it) |
+| DELETE | `/api/students/{id}/program` | Remove the program → 204 |
+| GET | `/api/tracks` | Championship, Excel and Adult, with their levels |
+| GET | `/api/elements` | Every program element (jumps, spins, sequences) |
 
-Errors come back as JSON "problem details": **400** for invalid input (with the field errors), **404** for unknown IDs and **409** for a double booking.
+Errors come back as JSON "problem details": **400** for invalid input, **404** for unknown IDs and **409** for a clash.
 
-A coach can only teach one lesson at a time, so a new or moved lesson can't overlap another lesson that day, for any student. The API answers with a 409 that says which lesson is in the way. Back-to-back lessons are fine (one ending at 9:45 and the next starting at 9:45).
+**Students.** A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`), a track (`CHAMPIONSHIP`, `EXCEL` or `ADULT`) and a level from that discipline's own ladder (for example `Pre-Gold`). The track isn't shown on the student profile; it's there so a new program starts on the student's track. Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong.
 
-A lesson's `type` must be exactly `Public`, `Freestyle` or `Off-ice`. The API answers anything else with a 400, and the database refuses it too.
+**Lessons repeat every week**, like the app's calendar: a `dayOfWeek` (`MONDAY` ...), a `startTime` (any minute), `durationMinutes` (5 to 240) and a `type` (`Public`, `Freestyle` or `Off-ice`; the `color` follows from it). A lesson runs from `startDate` to an optional `endDate`. Leave `startDate` out and a new lesson starts today; it can't start before today. Each lesson also shows the `place` of the availability block it starts in, if any.
 
-A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`), a track (`CHAMPIONSHIP`, `EXCEL` or `ADULT`, the same tracks as the app's Programs panel) and a level from that discipline's own ladder (for example `Pre-Gold`). The track isn't shown on the student profile; it's there so the Programs panel can be filled in. Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong. The full list is in `Discipline.java` and at `GET /api/disciplines`.
+**No double booking.** A coach teaches one lesson at a time, so a lesson can't overlap another lesson on the same weekday, for any student, in weeks when both are running. The 409 says which lesson is in the way. Back-to-back is fine (9:00–9:45 and 9:45–10:15), and so are lessons whose dates never meet.
+
+**Training history.** Every calendar lesson that has started gets a note (empty until the coach writes in it). `GET /api/notes` adds the missing ones first, for lessons that started since the last check, so a note you delete doesn't come back. A note with a `lessonId` must be for that lesson's student; a note without one ("Add a past lesson") can't be dated in the future.
+
+**Availability blocks** are optional, like in the app. The end must be after the start, and blocks on one day can't overlap (409).
+
+**Programs.** One per student. A student without a saved program gets the app's starting program (Untitled, 2:10, four starter elements) on their own freeskate track. The level must be one of the track's levels and every element code must be in the catalog (`GET /api/elements`).
+
+**Postman.** `postman/SkatePod-API.postman_collection.json` has every request above with checks. In Postman: Import → that file → Run collection. It creates a test student, tries everything, and deletes what it made.
 
 ## How the code is organized
 
 ```
 src/main/java/com/skatepod/api/
-  student/        Student entity, repository, service, controller
-    dto/          StudentRequest (input + validation), StudentResponse, NextLessonResponse
-    NextLessonCalculator.java   ← feature #2, yours to build
-  lesson/         Lesson entity, repository, service, controller
-    dto/          LessonRequest, LessonResponse
+  student/        Students, disciplines, tracks, next lesson (NextLessonCalculator)
+  lesson/         Weekly lessons; WeeklyLessons.java has the date rules (copies of the app's)
+  availability/   Availability blocks
+  note/           Training history (notes) and filling it in (NoteService.catchUpHistory)
+  program/        Programs, the element catalog, tracks and elements endpoints
   common/         BaseEntity (id + timestamps), errors, Clock
+  (each feature has a dto/ folder for its request and response records)
 src/main/resources/
   db/migration/   Flyway schema migrations (V1, V2, ...)
   db/sample/      dev-only sample data
@@ -92,19 +115,16 @@ src/main/resources/
 
 **Request flow:** Controller (HTTP + validation) → Service (business rules, transactions, entity ↔ DTO) → Repository (database). Entities never leave the service layer; the API only returns DTOs.
 
-**Database changes:** never edit an applied migration. Add a new file like `V2__add_student_notes.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
+**Database changes:** never edit an applied migration. Add the next file, like `V7__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
 
-## Your first feature: next lesson from the calendar 🎯
+## Your first feature: next lesson from the calendar ✅
 
 > As an instructor, I want each student's next lesson to come from my calendar, so that I always see accurate schedule info without updating it twice.
 
-1. Open `src/test/java/.../student/NextLessonCalculatorTest.java` and delete the `@Disabled` line.
-2. Run `./mvnw test` and watch 5 of its 7 tests fail (red). The two that expect "not scheduled" already pass.
-3. Implement `NextLessonCalculator.findNext()` until they all pass (green).
-4. Run the app and `GET /api/students`: each student's `nextLesson` is now filled in.
+Done: you built `NextLessonCalculator` for dated lessons. Lessons repeat weekly now (like the app), so it works out when each lesson next happens; `NextLessonCalculatorTest` has the rules.
 
 ## Notes
 
 - `compose.yaml` passwords are for local development only. Use environment variables (`DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`) when deploying.
 - The dev sample data is a Flyway migration, so use the dev database only for development. Start production with a fresh database.
-- The iPhone app doesn't call this API yet. Connecting them is a later step.
+- The iPhone app doesn't call this API yet. The API now matches the app's model (weekly lessons, notes, programs, availability), so connecting them is the next step. The app's settings stay on the phone.

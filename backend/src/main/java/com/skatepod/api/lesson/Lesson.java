@@ -10,10 +10,15 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 
-/** One dated lesson on a coach's calendar. */
+/**
+ * A weekly lesson on the coach's calendar, like the app's: every Tuesday at 9:00 for 60 minutes,
+ * from startDate until endDate. No start date means "always on" (older lessons in the app);
+ * no end date means it keeps going.
+ */
 @Entity
 @Table(name = "lessons")
 public class Lesson extends BaseEntity {
@@ -22,8 +27,9 @@ public class Lesson extends BaseEntity {
     @JoinColumn(name = "student_id", nullable = false)
     private Student student;
 
-    @Column(name = "lesson_date", nullable = false)
-    private LocalDate date;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week", nullable = false, length = 9)
+    private DayOfWeek dayOfWeek;
 
     @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
@@ -34,33 +40,38 @@ public class Lesson extends BaseEntity {
     @Column(name = "lesson_type", nullable = false, length = 40)
     private String type;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private LessonColor color;
+    @Column(name = "start_date")
+    private LocalDate startDate;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
 
     protected Lesson() {
         // Required by JPA.
     }
 
-    public Lesson(Student student, LocalDate date, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
-        update(student, date, startTime, durationMinutes, type, color);
+    public Lesson(Student student, DayOfWeek dayOfWeek, LocalTime startTime, int durationMinutes, String type,
+                  LocalDate startDate, LocalDate endDate) {
+        update(student, dayOfWeek, startTime, durationMinutes, type, startDate, endDate);
     }
 
-    public void update(Student student, LocalDate date, LocalTime startTime, int durationMinutes, String type, LessonColor color) {
+    public void update(Student student, DayOfWeek dayOfWeek, LocalTime startTime, int durationMinutes, String type,
+                       LocalDate startDate, LocalDate endDate) {
         this.student = student;
-        this.date = date;
+        this.dayOfWeek = dayOfWeek;
         this.startTime = startTime;
         this.durationMinutes = durationMinutes;
         this.type = type;
-        this.color = color;
+        this.startDate = startDate;
+        this.endDate = endDate;
     }
 
     public Student getStudent() {
         return student;
     }
 
-    public LocalDate getDate() {
-        return date;
+    public DayOfWeek getDayOfWeek() {
+        return dayOfWeek;
     }
 
     public LocalTime getStartTime() {
@@ -75,7 +86,16 @@ public class Lesson extends BaseEntity {
         return type;
     }
 
+    /** Worked out from the type, never stored. */
     public LessonColor getColor() {
-        return color;
+        return LessonColor.forType(type);
+    }
+
+    public LocalDate getStartDate() {
+        return startDate;
+    }
+
+    public LocalDate getEndDate() {
+        return endDate;
     }
 }

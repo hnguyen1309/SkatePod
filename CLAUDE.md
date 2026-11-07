@@ -20,7 +20,7 @@ SkatePod is a coach-first iPhone app for figure skating coaches: students, a wee
 | `docs/media/` | Demo GIF used in the README. |
 | `.github/workflows/ci.yml` | CI on every push and PR: mobile `npm ci`, `tsc`, `npm test` (Node 22); backend `./mvnw -B test` (Java 21). |
 
-**The app and the backend aren't connected yet.** The app keeps its own data on the phone (AsyncStorage), and the models differ (see "Model gaps").
+**The app and the backend aren't connected yet.** The app keeps its own data on the phone (AsyncStorage). Since backend V6 the backend's model matches the app's; the few differences left are under "Model gaps".
 
 ## Commands
 
@@ -86,26 +86,35 @@ Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 - **Entities** extend `common/BaseEntity` (UUID, `created_at`/`updated_at`), have a protected no-arg constructor plus a public one that calls `update(...)`, and no setters.
 - **Errors:** `NotFoundException` (404), `BadRequestException` (400), `ConflictException` (409), turned into `ProblemDetail` by `ApiExceptionHandler`.
 - **Time:** inject the `Clock` bean and use `now(clock)`; tests use `Clock.fixed(...)`.
+- **Features** (packages): `student/` (students, disciplines, `Track`, next lesson), `lesson/` (weekly lessons; `WeeklyLessons` has the date rules), `availability/`, `note/` (training history; `NoteService.catchUpHistory` adds an empty note per started lesson since `history_check`, run on `GET /api/notes`), `program/` (one program per student, `ElementCatalog`, `GET /api/tracks` and `/api/elements`). A student without a program gets a starting one on their freeskate track (`saved: false`). The app's settings stay on the phone.
 - **Disciplines:** catalog in code (`student/Discipline.java`), served at `GET /api/disciplines`; stored per student in `student_disciplines`.
-- **Database:** Flyway owns the schema (`ddl-auto: validate`). Never edit an applied migration; add the next `V6__...sql`. Sample data `db/sample/V1000__sample_data.sql` loads only in the `dev` profile; after adding a migration, reset the dev DB (it sorts before V1000). Deleting a student cascades to their lessons. Production config: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `PORT`.
-- **Tests:** plain JUnit 5 + AssertJ + Mockito with mocked repositories, no Spring context or DB. Descriptive names or `@DisplayName`.
+- **Database:** Flyway owns the schema (`ddl-auto: validate`). Never edit an applied migration; add the next `V7__...sql`. Sample data `db/sample/V1000__sample_data.sql` loads only in the `dev` profile; after adding a migration, reset the dev DB (it sorts before V1000). Deleting a student cascades to their lessons, notes and program; deleting a lesson keeps its notes (`lesson_id` set to null). Production config: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `PORT`.
+- **Tests:** plain JUnit 5 + AssertJ + Mockito with mocked repositories, no Spring context or DB. Descriptive names or `@DisplayName`. Give unsaved entities an id with `ReflectionTestUtils.setField(entity, "id", ...)` when a rule compares ids.
+- **Postman:** `backend/postman/SkatePod-API.postman_collection.json` (every endpoint with checks; creates and deletes its own test student). Run it with `npx newman run backend/postman/SkatePod-API.postman_collection.json` while the backend runs; when you change an endpoint, update it.
 
 ## Rules that live in two or more places (change together)
 
 | Rule | Backend | Mobile (`data.ts`) |
 | --- | --- | --- |
 | Discipline catalog | `student/Discipline.java` | `DISCIPLINES` |
-| Tracks: Championship, Excel, Adult | `student/Track.java` | `TRACK_LEVELS` keys |
+| Tracks and their levels: Championship, Excel, Adult | `student/Track.java` | `TRACK_LEVELS` |
+| Program element catalog and starter elements | `program/ElementCatalog.java` | `ELEMENT_CATALOG`, `STARTER_ELEMENTS` |
 | Lesson types: Public, Freestyle, Off-ice | `@Pattern` in `LessonRequest` + CHECK in migration V3 | `LESSON_TYPES` |
-| No double booking (overlap blocked, back-to-back fine, any student) | `LessonService.checkTimeIsFree` (409) | `findClash` (also checks date ranges; `CalendarScreen` alerts) |
+| No double booking (same weekday, overlap blocked, back-to-back fine, any student, only when date ranges meet) | `LessonService.checkTimeIsFree` (409) | `findClash` (`CalendarScreen` alerts) |
+| Weekly date rules (date ranges overlap, active on a day, next start, starts between) | `lesson/WeeklyLessons` | `datesOverlap`, `isLessonActiveOn`, `nextLessonTime`, `lessonTimesBetween` |
+| New lessons start today at the earliest | `LessonService.create` (400) | lesson editor |
+| Training history: an empty note per started lesson, one per lesson per day | `NoteService.catchUpHistory`, `findLessonNote` | `lessonHistoryToAdd`, `findLessonNote` |
+| Availability blocks on a day can't overlap; a lesson's place | `AvailabilityService` (409), `placeFor` | `findBlockOverlap`, `placeFor` |
 | Next lesson = earliest start at or after now | `NextLessonCalculator.findNext` | `findNextLesson` / `nextLessonTime` |
-| Lesson colors TEAL / SAND / PURPLE | `LessonColor` enum | lowercase names, `colorForType` |
+| Lesson colors follow the type: TEAL / SAND / PURPLE | `LessonColor.forType` | lowercase names, `colorForType` |
 
 ## Model gaps (for when the app connects to the backend)
 
-- Backend lessons are dated one-offs (`lesson_date` + `start_time`); mobile lessons are weekly with optional start/end dates.
-- Backend student disciplines have a `track` (CHAMPIONSHIP / EXCEL / ADULT, `student/Track.java`) for the Programs panel, not shown on the profile; mobile students don't have one yet. Focus and progress are gone from both (backend V5).
-- Mobile-only so far: notes/lesson history, programs, availability blocks, settings.
+The backend matches the app's model since V6. What's left to map in the app:
+- **Names and units:** lessons use `dayOfWeek` ("MONDAY") and `startTime` ("09:30") instead of `day` (0 = Monday) and `start` (minutes). Notes use `durationMinutes` (60) instead of `duration` ("60 minutes"). Programs send element codes only. Colors are uppercase.
+- **Not in the app yet:** `track` on each student discipline (hidden on the profile, used for the starting program).
+- **Not in the backend:** student `tone` (avatar color the app assigns), settings, and `syncLessonNote` (when a lesson changes, the app should PUT its note too).
+- **IDs:** the backend makes UUIDs; the app's are short random strings, so data already on a phone needs new ids when uploaded.
 
 ## Conventions
 
