@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { Avatar, Card, DisciplineBadges, Empty, Heading, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
-import { WEEKDAYS, formatTime, disciplineSummary, initialsOf, nextLessonLabel, todayIndex, type Student } from "../data";
+import { WEEKDAYS, formatTime, disciplineSummary, initialsOf, isLessonActiveOn, nextLessonLabel, nextLessonTime, todayIndex, type Student } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius } from "../theme";
@@ -24,16 +24,18 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   );
 
   const today = todayIndex();
-  const todays = lessons.filter((lesson) => lesson.day === today).sort((a, b) => a.start - b.start);
+  const todays = lessons.filter((lesson) => lesson.day === today && isLessonActiveOn(lesson, new Date())).sort((a, b) => a.start - b.start);
   const todaysMinutes = todays.reduce((sum, lesson) => sum + lesson.duration, 0);
 
   const upcoming = useMemo(() => {
-    const ordered = [...lessons].sort((a, b) => {
-      const dayA = (a.day - today + 7) % 7;
-      const dayB = (b.day - today + 7) % 7;
-      return dayA - dayB || a.start - b.start;
-    });
-    return ordered.slice(0, 6);
+    // Soonest first, using each lesson's next date (lessons that haven't started yet or have ended sort right).
+    const now = new Date();
+    return lessons
+      .map((lesson) => ({ lesson, time: nextLessonTime(lesson, now) }))
+      .filter((item): item is { lesson: (typeof lessons)[number]; time: Date } => item.time !== null)
+      .sort((a, b) => a.time.getTime() - b.time.getTime())
+      .slice(0, 6)
+      .map((item) => item.lesson);
   }, [lessons, today]);
 
   return (

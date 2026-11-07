@@ -46,7 +46,11 @@ export type Lesson = {
   type: string;
   duration: number; // minutes
   color: LessonColor;
-  createdAt?: string; // when the lesson was added to the calendar; training history starts here
+  createdAt?: string; // when the lesson was added to the calendar (lessons from before start/end dates)
+  // The weekly lesson runs from startDate (today or later when it's created) until endDate, if any.
+  // Both are calendar days like "2026-11-12". Lessons saved before these existed have neither: always on.
+  startDate?: string;
+  endDate?: string;
 };
 
 export type Note = {
@@ -533,9 +537,11 @@ export function isEmptyNote(note: Note) {
 export function lessonHistoryToAdd(lessons: Lesson[], notes: Note[], since: Date, now: Date, newId: () => string): Note[] {
   const added: Note[] = [];
   for (const lesson of lessons) {
-    const created = lesson.createdAt ? new Date(lesson.createdAt) : since;
-    const from = created > since ? created : since;
+    // History starts on the lesson's start date (or when it was added, for older lessons) and ends on its end date.
+    const begins = lesson.startDate ? fromDateKey(lesson.startDate) : lesson.createdAt ? new Date(lesson.createdAt) : since;
+    const from = begins > since ? begins : since;
     for (const time of lessonTimesBetween(lesson, from, now)) {
+      if (lesson.endDate && toDateKey(time) > lesson.endDate) break;
       if (!findLessonNote([...notes, ...added], lesson, time)) added.push(emptyLessonNote(lesson, time, newId()));
     }
   }
@@ -589,23 +595,31 @@ export const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Fri
  * Returns null when the student has no lessons on the calendar.
  */
 export function findNextLesson(studentId: string, lessons: Lesson[], now = new Date()) {
-  const today = (now.getDay() + 6) % 7;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  let best: { lesson: Lesson; daysAhead: number } | null = null;
-
+  let best: { lesson: Lesson; time: Date } | null = null;
   for (const lesson of lessons) {
     if (lesson.studentId !== studentId) continue;
-    let daysAhead = (lesson.day - today + 7) % 7;
-    if (daysAhead === 0 && lesson.start < nowMinutes) daysAhead = 7;
-    const sooner = !best || daysAhead < best.daysAhead || (daysAhead === best.daysAhead && lesson.start < best.lesson.start);
-    if (sooner) best = { lesson, daysAhead };
+    const time = nextLessonTime(lesson, now);
+    if (time && (!best || time < best.time)) best = { lesson, time };
   }
   if (!best) return null;
 
-  const { lesson, daysAhead } = best;
+  const { lesson, time } = best;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const lessonDay = new Date(time);
+  lessonDay.setHours(0, 0, 0, 0);
+  const daysAhead = Math.round((lessonDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
   const day =
-    daysAhead === 0 ? "Today" : daysAhead === 1 ? "Tomorrow" : daysAhead === 7 ? `Next ${FULL_WEEKDAYS[lesson.day]}` : FULL_WEEKDAYS[lesson.day];
-  return { lesson, label: `${day}, ${formatTime(lesson.start)}` };
+    daysAhead === 0
+      ? "Today"
+      : daysAhead === 1
+        ? "Tomorrow"
+        : daysAhead < 7
+          ? FULL_WEEKDAYS[lesson.day]
+          : daysAhead < 14
+            ? `Next ${FULL_WEEKDAYS[lesson.day]}`
+            : time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return { lesson, time, label: `${day}, ${formatTime(lesson.start)}` };
 }
 
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
@@ -619,10 +633,50 @@ export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
  * Two lessons clash when each one starts before the other ends (back-to-back is fine).
  * Same rule as LessonService.checkTimeIsFree in the backend.
  */
-export function findClash(lesson: Pick<Lesson, "id" | "day" | "start" | "duration">, lessons: Lesson[]) {
+export function findClash(
+  lesson: Pick<Lesson, "id" | "day" | "start" | "duration" | "startDate" | "endDate">,
+  lessons: Lesson[],
+) {
   const end = lesson.start + lesson.duration;
   return lessons.find((other) => {
-    if (other.id === lesson.id || other.day !== lesson.day) return false;
+    if (other.id === lesson.id || other.day !== lesson.day || !datesOverlap(lesson, other)) return false;
     return lesson.start < other.start + other.duration && other.start < end;
   });
+}
+
+/** Do two weekly lessons ever run in the same week? (A missing start or end means "no limit".) */
+export function datesOverlap(a: Pick<Lesson, "startDate" | "endDate">, b: Pick<Lesson, "startDate" | "endDate">) {
+  // "YYYY-MM-DD" strings sort the same way as the dates they stand for.
+  return (a.startDate ?? "") <= (b.endDate ?? "9999") && (b.startDate ?? "") <= (a.endDate ?? "9999");
+}
+
+/** A day as "2026-11-12" (local time), the format startDate and endDate use. */
+export function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** "2026-11-12" → midnight that day, local time. */
+export function fromDateKey(key: string) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** Is the weekly lesson running on this calendar day (between its start and end dates)? */
+export function isLessonActiveOn(lesson: Pick<Lesson, "startDate" | "endDate">, date: Date) {
+  const key = toDateKey(date);
+  return (!lesson.startDate || key >= lesson.startDate) && (!lesson.endDate || key <= lesson.endDate);
+}
+
+/** When the lesson next starts at or after `now`, or null if it has ended. */
+export function nextLessonTime(lesson: Pick<Lesson, "day" | "start" | "startDate" | "endDate">, now = new Date()) {
+  const time = startOfWeek(now);
+  time.setDate(time.getDate() + lesson.day);
+  time.setHours(Math.floor(lesson.start / 60), lesson.start % 60, 0, 0);
+  if (time < now) time.setDate(time.getDate() + 7); // already started this week, so next week's
+  if (lesson.startDate) {
+    const first = fromDateKey(lesson.startDate);
+    while (time < first) time.setDate(time.getDate() + 7);
+  }
+  if (lesson.endDate && toDateKey(time) > lesson.endDate) return null;
+  return time;
 }

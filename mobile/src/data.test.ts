@@ -5,6 +5,10 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   colorForType,
+  findClash,
+  findNextLesson,
+  isLessonActiveOn,
+  nextLessonTime,
   isEmptyNote,
   lessonHistoryToAdd,
   matchesHistoryFilter,
@@ -169,5 +173,48 @@ describe("matchesHistoryFilter: filters on the Lessons tab", () => {
   test("by level", () => {
     assert.equal(matchesHistoryFilter(note(), lily, { ...all, level: "Silver" }, now), true);
     assert.equal(matchesHistoryFilter(note(), lily, { ...all, level: "Gold" }, now), false);
+  });
+});
+
+describe("weekly lessons with a start date and an optional end date", () => {
+  const fridayNight = new Date(2026, 10, 6, 22, 0); // Fri Nov 6
+
+  test("a lesson only runs between its start and end dates", () => {
+    const fall = { startDate: "2026-11-12", endDate: "2026-12-17" };
+    assert.equal(isLessonActiveOn(fall, new Date(2026, 10, 5)), false);
+    assert.equal(isLessonActiveOn(fall, new Date(2026, 10, 12)), true);
+    assert.equal(isLessonActiveOn(fall, new Date(2026, 11, 24)), false);
+    assert.equal(isLessonActiveOn({}, new Date(2020, 0, 1)), true); // older lessons without dates: always on
+  });
+
+  test("the next lesson waits for the start date", () => {
+    const startsLater = { ...lesson, startDate: "2026-11-19" }; // a Thursday two weeks out
+    assert.equal(nextLessonTime(startsLater, fridayNight)?.toDateString(), new Date(2026, 10, 19).toDateString());
+  });
+
+  test("a lesson past its end date has no next lesson", () => {
+    assert.equal(nextLessonTime({ ...lesson, endDate: "2026-11-05" }, fridayNight), null);
+  });
+
+  test("the next-lesson label says the date when it's more than two weeks away", () => {
+    const later = { ...lesson, startDate: "2026-11-26" };
+    assert.equal(findNextLesson("s2", [later], fridayNight)?.label, "Thu, Nov 26, 9:00 AM");
+    assert.equal(findNextLesson("s2", [lesson], fridayNight)?.label, "Thursday, 9:00 AM");
+  });
+
+  test("lessons at the same time don't clash if their dates never overlap", () => {
+    const fall = { ...lesson, id: "a", endDate: "2026-12-17" };
+    const spring = { ...lesson, id: "b", startDate: "2027-01-07" };
+    assert.equal(findClash(spring, [fall]), undefined);
+    assert.equal(findClash({ ...spring, startDate: "2026-12-10" }, [fall])?.id, "a");
+  });
+
+  test("training history follows the start and end dates", () => {
+    let next = 0;
+    const id = () => `d${next++}`;
+    const since = new Date(2026, 10, 2);
+    const fourWeeksLater = new Date(2026, 10, 30, 22, 0);
+    const added = lessonHistoryToAdd([{ ...lesson, startDate: "2026-11-12", endDate: "2026-11-19" }], [], since, fourWeeksLater, id);
+    assert.deepEqual(added.map((item) => new Date(item.date).getDate()), [12, 19]);
   });
 });

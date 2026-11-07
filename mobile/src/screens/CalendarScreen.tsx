@@ -13,6 +13,10 @@ import {
   colorForType,
   findClash,
   findLessonNote,
+  fromDateKey,
+  nextLessonTime,
+  toDateKey,
+  isLessonActiveOn,
   syncLessonNote,
   formatHour,
   formatTime,
@@ -290,7 +294,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                         </View>
                       ))}
                     {lessons
-                      .filter((lesson) => lesson.day === dayIndex)
+                      .filter((lesson) => lesson.day === dayIndex && isLessonActiveOn(lesson, day.date))
                       .map((lesson) => (
                         <LessonBlock
                           active={lesson.id === selectedId}
@@ -355,6 +359,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         <LessonEditor
           defaultDay={tapped?.day ?? (mode === "Day" ? selectedDay : todayIndex())}
           defaultStart={tapped?.start}
+          // Tapping a day in this or a later week starts the lesson that week; earlier weeks start today.
+          defaultStartDate={tapped && toDateKey(dates[tapped.day].date) > toDateKey(new Date()) ? toDateKey(dates[tapped.day].date) : undefined}
           defaultDuration={settings.lessonLength}
           lessons={lessons}
           onClose={() => {
@@ -411,6 +417,7 @@ function LessonEditor({
   lessons,
   defaultDay,
   defaultStart = 9 * 60,
+  defaultStartDate,
   defaultDuration,
   initial,
   onClose,
@@ -420,6 +427,7 @@ function LessonEditor({
   lessons: Lesson[];
   defaultDay: number;
   defaultStart?: number; // minutes after midnight; 9:00 AM when you use the Add button
+  defaultStartDate?: string; // "2026-11-12": the day tapped on the calendar (today when using Add)
   defaultDuration: number;
   initial?: Lesson; // set when editing an existing lesson; the form starts with its values
   onClose: () => void;
@@ -435,6 +443,12 @@ function LessonEditor({
   const [durationText, setDurationText] = useState(String(defaultDuration));
   const [type, setType] = useState(initial?.type ?? LESSON_TYPES[0]);
   const end = start + duration;
+  // A weekly lesson runs from its start date (today at the earliest) until its end date, or forever.
+  // Lessons saved before start dates existed have none ("Already running") until the coach picks one.
+  const today = toDateKey(new Date());
+  const [startDate, setStartDate] = useState<string | undefined>(initial ? initial.startDate : (defaultStartDate ?? today));
+  const [endDate, setEndDate] = useState<string | undefined>(initial?.endDate);
+  const firstLesson = nextLessonTime({ day: WEEKDAYS.indexOf(day), start, startDate }, startDate ? fromDateKey(startDate) : new Date());
 
   function changeDuration(minutes: number) {
     setDuration(minutes);
@@ -456,8 +470,16 @@ function LessonEditor({
       Alert.alert("Outside calendar hours", outside);
       return;
     }
+    if (startDate && startDate < today && startDate !== initial?.startDate) {
+      Alert.alert("Check the start date", "A weekly lesson can start today at the earliest. To record a lesson that already happened, add a past lesson on the Lessons tab.");
+      return;
+    }
+    if (endDate && startDate && endDate < startDate) {
+      Alert.alert("Check the end date", "The end date needs to be on or after the start date.");
+      return;
+    }
     // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
-    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString() };
+    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString(), startDate, endDate };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -505,12 +527,29 @@ function LessonEditor({
         value={durationText}
       />
       <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <DateField
+            emptyLabel="Already running"
+            label="Starts"
+            minimum={initial?.startDate && initial.startDate < today ? initial.startDate : today}
+            onChange={setStartDate}
+            value={startDate}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <DateField emptyLabel="No end date" label="Ends (optional)" minimum={startDate ?? today} onChange={setEndDate} onClear={() => setEndDate(undefined)} value={endDate} />
+        </View>
+      </View>
+      <Text style={{ fontSize: 12, color: colors.muted, marginTop: -6, marginBottom: 16 }}>
+        {firstLesson
+          ? `Every ${FULL_WEEKDAYS[WEEKDAYS.indexOf(day)]} at ${formatTime(start)}${endDate ? ` until ${formatDateKey(endDate)}` : ""}. ${startDate ? `First lesson: ${firstLesson.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}.` : ""}`
+          : "No lessons fall between these dates. Move the end date later."}
+      </Text>
     </Sheet>
   );
 }
 
-// The window that opens when you tap a lesson: everything about that slot, plus Edit, Delete
-// and Add notes. (Adding a new lesson is the Add button or tapping an empty time.)
 // The small panel along the bottom third of the screen that opens when you tap a lesson, like a
 // calendar app's event preview. The calendar stays visible and usable above it. It stays open while
 // you edit the lesson or its note, and closes with the X, after Delete, or when you tap an empty time.
@@ -792,6 +831,66 @@ function TimeRange({
 }
 
 // The native iOS wheel (hours, minutes, AM/PM). Works in Expo Go.
+// A day picker that opens the iOS date wheel inline (a pop-up can't open over a Sheet on iOS).
+// `minimum` stops earlier days (e.g. a weekly lesson can't start in the past). onClear adds a "Clear" link.
+function DateField({
+  label,
+  value,
+  minimum,
+  emptyLabel,
+  onChange,
+  onClear,
+}: {
+  label: string;
+  value: string | undefined;
+  minimum?: string;
+  emptyLabel: string;
+  onChange: (key: string) => void;
+  onClear?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Label>{label}</Label>
+      <Pressable
+        accessibilityLabel={`${label}, ${value ? formatDateKey(value) : emptyLabel}`}
+        accessibilityRole="button"
+        onPress={() => setOpen((current) => !current)}
+        style={{
+          borderWidth: 1,
+          borderColor: open ? colors.teal : colors.border,
+          borderRadius: radius.md,
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+          backgroundColor: colors.white,
+        }}
+      >
+        <Text style={{ fontSize: 15, fontWeight: "600", color: value ? colors.text : colors.muted }}>{value ? formatDateKey(value) : emptyLabel}</Text>
+      </Pressable>
+      {value && onClear ? (
+        <Pressable accessibilityRole="button" onPress={() => { onClear(); setOpen(false); }} style={{ marginTop: 6 }}>
+          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.tealDark }}>Clear</Text>
+        </Pressable>
+      ) : null}
+      {open ? (
+        <DateTimePicker
+          display="spinner"
+          minimumDate={minimum ? fromDateKey(minimum) : undefined}
+          mode="date"
+          onChange={(_event, date) => date && onChange(toDateKey(date))}
+          style={{ alignSelf: "stretch" }}
+          value={value ? fromDateKey(value) : minimum ? fromDateKey(minimum) : new Date()}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+// "2026-11-12" → "Thu, Nov 12"
+function formatDateKey(key: string) {
+  return fromDateKey(key).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 function TimeWheel({ minutes, onChange }: { minutes: number; onChange: (minutes: number) => void }) {
   const value = new Date();
   value.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);

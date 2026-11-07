@@ -10,7 +10,7 @@ The iPhone version of the Figma Make prototype, built with Expo (React Native + 
 | **Students** | Search and filter by discipline category, view a student’s snapshot, add, edit or delete students. Each student can have several disciplines (Learn to Skate, Freeskate, Skills, Pattern Dance…), each with its own level picked from a dropdown. |
 | **Calendar** | Weekly schedule in Week or Day view, add or delete lessons, jump to notes. A lesson can’t be booked over another one (the app tells you whose lesson is in the way). |
 | **Programs** | Pick track and level, build a program components sheet, draw the skating path on a rink with your finger and place elements |
-| **Lessons** | Training history: every calendar lesson shows up once it starts, with or without notes. Filter by student, time and level; select several to share or delete; write notes, skills and next steps |
+| **Lessons** | Training history: every calendar lesson shows up once it starts, with or without notes. Add a past lesson with its note. Filter by student, time and level; select several to share or delete; write notes, skills and next steps |
 | **Settings** (gear icon) | Coach profile, default lesson length, sharing default, export a backup, reset sample data |
 
 Data is saved on the phone only. Every student and note in it is made-up sample data.

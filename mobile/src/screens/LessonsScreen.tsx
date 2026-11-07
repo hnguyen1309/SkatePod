@@ -1,3 +1,4 @@
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Share, Text, TextInput, View } from "react-native";
 import { Icon } from "../components/Icon";
@@ -193,6 +194,9 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
           variant="secondary"
         />
       </View>
+      {!selecting ? (
+        <Button icon="plus" label="Add a past lesson" onPress={() => startNew(studentFilter ?? undefined)} style={{ marginBottom: 12 }} variant="secondary" />
+      ) : null}
       {selecting ? (
         <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
           <Button
@@ -304,6 +308,7 @@ function NoteEditor({
   // Those are changed on the lesson (Calendar > Lesson details > Edit), and the note follows (syncLessonNote).
   // Notes not tied to a lesson keep these fields editable.
   const fromLesson = Boolean(draft.lessonId);
+  const [pickingDate, setPickingDate] = useState(false);
 
   function addSkill() {
     const skill = newSkill.trim();
@@ -338,12 +343,40 @@ function NoteEditor({
         </>
       }
       onClose={onClose}
-      title={isNew ? "New lesson note" : studentName}
+      title={isNew ? (fromLesson ? "New lesson note" : "Add past lesson") : studentName}
       visible
     >
-      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
-        {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-      </Text>
+      {fromLesson ? (
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
+          {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        </Text>
+      ) : (
+        // A lesson that isn't on the calendar (e.g. one that already happened): pick when it was.
+        // Only past times are allowed; future lessons go on the Calendar.
+        <View style={{ marginBottom: 16 }}>
+          <Label>When</Label>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setPickingDate((current) => !current)}
+            style={{ borderWidth: 1, borderColor: pickingDate ? colors.teal : colors.border, borderRadius: radius.md, paddingVertical: 12, paddingHorizontal: 14 }}
+          >
+            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>
+              {new Date(draft.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} ·{" "}
+              {new Date(draft.date).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+            </Text>
+          </Pressable>
+          {pickingDate ? (
+            <DateTimePicker
+              display="spinner"
+              maximumDate={new Date()}
+              mode="datetime"
+              onChange={(_event, date) => date && set({ date: date.toISOString() })}
+              style={{ alignSelf: "stretch" }}
+              value={new Date(draft.date)}
+            />
+          ) : null}
+        </View>
+      )}
 
       {fromLesson ? (
         <View style={{ marginBottom: 16, padding: 12, borderRadius: radius.md, backgroundColor: colors.tealSoft }}>

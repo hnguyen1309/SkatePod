@@ -26,7 +26,7 @@ const ADD_LABELS: Partial<Record<Tab, string>> = {
   Students: "Add student",
   Calendar: "Add lesson",
   Programs: "New program",
-  Lessons: "Add note",
+  Lessons: "Past lesson",
 };
 
 export default function App() {
