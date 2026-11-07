@@ -1,4 +1,4 @@
-# Calendar availability blocks: add one with a place, block overlaps, show the place on a lesson, delete.
+# Calendar availability blocks: add one with a place, block overlaps, legend for the grey-out, show the place on a lesson, delete.
 appId: host.exp.Exponent
 name: Calendar availability blocks
 tags: [regression]
@@ -27,6 +27,10 @@ tags: [regression]
 - tapOn: "OK"
 - tapOn: "Done"
 - assertVisible: "Availability \\(1\\)"
+# With a block set, the legend explains the shading (time outside the block is greyed out).
+- scrollUntilVisible:
+    element: "Not available"
+- assertVisible: "Available"
 
 # Emma's sample Wednesday lesson at 3:00 PM sits inside the block, so its preview shows the place.
 - tapOn: "Day"
@@ -46,3 +50,4 @@ tags: [regression]
 - assertNotVisible: "Wednesday · 3:00 PM–6:00 PM"
 - tapOn: "Done"
 - assertVisible: "Set availability \\(optional\\)"
+- assertNotVisible: "Not available"

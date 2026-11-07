@@ -4,6 +4,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  MAX_DAY_WIDTH,
+  MAX_HOUR_HEIGHT,
+  calendarScale,
   colorForType,
   findClash,
   findNextLesson,
@@ -13,6 +16,7 @@ import {
   lessonHistoryToAdd,
   matchesHistoryFilter,
   syncLessonNote,
+  unavailableStretches,
   upgradeLesson,
   type Lesson,
   type Note,
@@ -216,5 +220,76 @@ describe("weekly lessons with a start date and an optional end date", () => {
     const fourWeeksLater = new Date(2026, 10, 30, 22, 0);
     const added = lessonHistoryToAdd([{ ...lesson, startDate: "2026-11-12", endDate: "2026-11-19" }], [], since, fourWeeksLater, id);
     assert.deepEqual(added.map((item) => new Date(item.date).getDate()), [12, 19]);
+  });
+});
+
+describe("unavailableStretches: time outside the coach's availability is greyed out", () => {
+  // Made-up blocks: Tuesday (day 1) 3–6 PM at North Rink.
+  const tuesday = { day: 1, start: 15 * 60, end: 18 * 60 };
+
+  test("no blocks at all: nothing is greyed out", () => {
+    assert.deepEqual(unavailableStretches(1, []), []);
+  });
+
+  test("a day without blocks isn't greyed out, even when other days have some", () => {
+    assert.deepEqual(unavailableStretches(0, [tuesday]), []);
+  });
+
+  test("one block greys out the time before and after it", () => {
+    assert.deepEqual(unavailableStretches(1, [tuesday]), [
+      { start: 6 * 60, end: 15 * 60 },
+      { start: 18 * 60, end: 22 * 60 },
+    ]);
+  });
+
+  test("the gap between two blocks is greyed out, in time order", () => {
+    const morning = { day: 1, start: 7 * 60, end: 9 * 60 };
+    assert.deepEqual(unavailableStretches(1, [tuesday, morning]), [
+      { start: 6 * 60, end: 7 * 60 },
+      { start: 9 * 60, end: 15 * 60 },
+      { start: 18 * 60, end: 22 * 60 },
+    ]);
+  });
+
+  test("back-to-back blocks and blocks at the calendar's edges leave no grey slivers", () => {
+    const early = { day: 1, start: 6 * 60, end: 12 * 60 };
+    const late = { day: 1, start: 12 * 60, end: 22 * 60 };
+    assert.deepEqual(unavailableStretches(1, [late, early]), []);
+  });
+});
+
+describe("calendarScale: zooming the calendar", () => {
+  // A phone-sized box for the day columns: 300 wide, 480 tall.
+  const phone = { width: 300, height: 480 };
+
+  test("fully zoomed out, 12 hours fit the height and 7 days fit the width", () => {
+    const scale = calendarScale(1, phone);
+    assert.equal(scale.hourHeight * 12, 480);
+    assert.equal(scale.dayWidth * 7, 300);
+    assert.equal(scale.canZoomOut, false);
+    assert.equal(scale.canZoomIn, true);
+  });
+
+  test("fully zoomed in stops at the maximum hour height and day width", () => {
+    const scale = calendarScale(1000, phone);
+    assert.equal(scale.hourHeight, MAX_HOUR_HEIGHT);
+    assert.equal(scale.dayWidth, MAX_DAY_WIDTH);
+    assert.equal(scale.canZoomIn, false);
+    assert.equal(scale.canZoomOut, true);
+  });
+
+  test("in between, the day width grows with the hour height", () => {
+    const small = calendarScale(50, phone);
+    const big = calendarScale(80, phone);
+    assert.equal(small.hourHeight, 50);
+    assert.ok(big.dayWidth > small.dayWidth);
+  });
+
+  test("on a very big screen, fully zoomed out is also the most it can zoom in", () => {
+    const scale = calendarScale(64, { width: 1400, height: 1440 });
+    assert.equal(scale.hourHeight, 120); // 1440 / 12
+    assert.equal(scale.dayWidth, 200); // 1400 / 7
+    assert.equal(scale.canZoomIn, false);
+    assert.equal(scale.canZoomOut, false);
   });
 });
