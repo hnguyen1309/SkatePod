@@ -33,8 +33,8 @@ export type Student = {
   id: string;
   name: string;
   disciplines: StudentDiscipline[]; // can be empty
-  focus: string; // the next lesson isn't stored here: it comes from the calendar (findNextLesson)
-  progress: number;
+  // The next lesson isn't stored here: it comes from the calendar (findNextLesson). "Current focus"
+  // and a hand-set progress % were removed (Nov 2026): nobody kept them up to date.
   tone: Tone;
 };
 
@@ -341,12 +341,12 @@ function daysAgo(days: number) {
 
 // All sample people below are made up.
 export const SAMPLE_STUDENTS: Student[] = [
-  { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], focus: "Double loop", progress: 74, tone: TONES[0] },
-  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], focus: "Flying camel", progress: 61, tone: TONES[1] },
-  { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], focus: "Power pulls", progress: 82, tone: TONES[2] },
-  { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], focus: "Double axel", progress: 57, tone: TONES[3] },
-  { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], focus: "Combination spin", progress: 69, tone: TONES[4] },
-  { id: "s6", name: "Amelia Park", disciplines: [], focus: "Axel", progress: 46, tone: TONES[5] },
+  { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], tone: TONES[0] },
+  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], tone: TONES[1] },
+  { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], tone: TONES[2] },
+  { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], tone: TONES[3] },
+  { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], tone: TONES[4] },
+  { id: "s6", name: "Amelia Park", disciplines: [], tone: TONES[5] },
 ];
 
 export const SAMPLE_LESSONS: Lesson[] = [

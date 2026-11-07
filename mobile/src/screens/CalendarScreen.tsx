@@ -525,7 +525,7 @@ function LessonPreview({
   onClose,
 }: {
   lesson: Lesson;
-  student?: { name: string; focus: string };
+  student?: { name: string };
   place?: string;
   hasNote: boolean; // a note was already written for this lesson in the week on screen
   onEdit: () => void;
@@ -571,10 +571,11 @@ function LessonPreview({
           </View>
           <IconButton icon="close" label="Close preview" onPress={onClose} size={30} />
         </View>
-        <View style={{ gap: 6, marginTop: 10 }}>
-          {place ? <Meta icon="home" text={place} /> : null}
-          <Meta icon="notes" text={student?.focus ? `Focus: ${student.focus}` : "No focus set"} />
-        </View>
+        {place ? (
+          <View style={{ marginTop: 10 }}>
+            <Meta icon="home" text={place} />
+          </View>
+        ) : null}
         <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
           <Button icon="notes" label={hasNote ? "Open notes" : "Add notes"} onPress={onNotes} style={{ flex: 1.3 }} variant="secondary" />
           <Button icon="edit" label="Edit" onPress={onEdit} style={{ flex: 1 }} />

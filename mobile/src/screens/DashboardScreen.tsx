@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
-import { Avatar, Card, DisciplineBadges, Empty, Heading, ProgressBar, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
+import { Avatar, Card, DisciplineBadges, Empty, Heading, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
 import { WEEKDAYS, formatTime, disciplineSummary, initialsOf, nextLessonLabel, todayIndex, type Student } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
@@ -148,11 +148,6 @@ function StudentCard({ student, nextLesson, onPress }: { student: Student; nextL
           <Icon color="#5f9195" name="clock" size={15} />
           <Text style={{ fontSize: 13, fontWeight: "600", color: colors.subtle }}>{nextLesson}</Text>
         </View>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 12, marginBottom: 6 }}>
-          <Text style={{ fontSize: 11, fontWeight: "600", color: "#7f8b96" }}>Focus: {student.focus}</Text>
-          <Text style={{ fontSize: 11, fontWeight: "700", color: colors.subtle }}>{student.progress}%</Text>
-        </View>
-        <ProgressBar percent={student.progress} trackColor={colors.borderSoft} />
       </Card>
     </Pressable>
   );
