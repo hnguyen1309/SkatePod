@@ -165,9 +165,10 @@ function NoteEditor({
   const set = (changes: Partial<Note>) => setDraft((current) => ({ ...current, ...changes }));
   const studentIds = students.map((student) => student.id);
   const studentName = studentById(draft.studentId)?.name ?? "Removed student";
-  // The student can only be picked for a brand-new note. Once a note is saved, or when it was started
-  // from a calendar lesson, it belongs to that student: change the student on the lesson instead.
-  const studentLocked = !isNew || Boolean(draft.lessonId);
+  // A note written for a calendar lesson shows the lesson's details (student, date, type, length) read-only.
+  // Those are changed on the lesson (Calendar > Lesson details > Edit), and the note follows (syncLessonNote).
+  // Notes not tied to a lesson keep these fields editable.
+  const fromLesson = Boolean(draft.lessonId);
 
   function addSkill() {
     const skill = newSkill.trim();
@@ -209,36 +210,42 @@ function NoteEditor({
         {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </Text>
 
-      {studentLocked ? (
-        <View style={{ marginBottom: 16 }}>
-          <Label>Student</Label>
+      {fromLesson ? (
+        <View style={{ marginBottom: 16, padding: 12, borderRadius: radius.md, backgroundColor: colors.tealSoft }}>
+          <Label>Lesson</Label>
           <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>{studentName}</Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
-            {draft.lessonId ? "To change the student, edit the lesson on the Calendar." : "A saved note stays with its student."}
+          <Text style={{ fontSize: 13, color: colors.body, marginTop: 3 }}>
+            {draft.lessonType} · {draft.duration}
+          </Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
+            To change the student, time, type or length, edit the lesson on the Calendar.
           </Text>
         </View>
-      ) : studentIds.length ? (
-        <PickerField
-          label="Student"
-          onChange={(studentId: string) => set({ studentId })}
-          options={studentIds}
-          renderLabel={(id) => studentById(id)?.name ?? id}
-          value={studentIds.includes(draft.studentId) ? draft.studentId : studentIds[0]}
-        />
-      ) : null}
-      <PickerField
-        label="Lesson type"
-        onChange={(lessonType: string) => set({ lessonType, title: `${lessonType} lesson` })}
-        options={LESSON_TYPES}
-        value={draft.lessonType}
-      />
-      {/* A calendar lesson can be any length (e.g. 105 minutes), so show that length as a choice too. */}
-      <PickerField
-        label="Duration"
-        onChange={(duration: string) => set({ duration })}
-        options={DURATIONS.includes(draft.duration) ? DURATIONS : [...DURATIONS, draft.duration]}
-        value={draft.duration}
-      />
+      ) : (
+        <>
+          {studentIds.length ? (
+            <PickerField
+              label="Student"
+              onChange={(studentId: string) => set({ studentId })}
+              options={studentIds}
+              renderLabel={(id) => studentById(id)?.name ?? id}
+              value={studentIds.includes(draft.studentId) ? draft.studentId : studentIds[0]}
+            />
+          ) : null}
+          <PickerField
+            label="Lesson type"
+            onChange={(lessonType: string) => set({ lessonType, title: `${lessonType} lesson` })}
+            options={LESSON_TYPES}
+            value={draft.lessonType}
+          />
+          <PickerField
+            label="Duration"
+            onChange={(duration: string) => set({ duration })}
+            options={DURATIONS.includes(draft.duration) ? DURATIONS : [...DURATIONS, draft.duration]}
+            value={draft.duration}
+          />
+        </>
+      )}
       <PickerField label="Overall session" onChange={(overall: string) => set({ overall })} options={OVERALL} value={draft.overall} />
 
       <Field label="Session focus" onChangeText={(focus) => set({ focus })} placeholder="Skills, program sections, or goals covered..." value={draft.focus} />
