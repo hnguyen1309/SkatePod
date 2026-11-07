@@ -12,6 +12,13 @@ tags: [regression]
 - tapOn: "Previous week"
 - tapOn: "Today"
 
+# Zoom out and back in with the − / + buttons (pinching can't be scripted here).
+- tapOn: "Zoom out"
+- tapOn: "Zoom out"
+- tapOn: "Zoom in"
+- tapOn: "Zoom in"
+- assertVisible: "Schedule"
+
 # Schedule a lesson for Amelia on Sunday at 9:00 AM (the default start).
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
@@ -40,6 +47,7 @@ tags: [regression]
 - tapOn: "Day"
 - tapOn: "SUN.*"
 - assertVisible: ".*Amelia.*"
+# The card itself shows a clock and "45m"; its accessibility label also has the type.
 - assertVisible: ".*Off-ice · 45m.*"
 
 # Tapping the lesson opens the preview panel.

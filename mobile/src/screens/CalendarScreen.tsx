@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Alert, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Alert, Animated, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { Icon } from "../components/Icon";
 import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
+  DEFAULT_HOUR_HEIGHT,
   FIRST_HOUR,
   FULL_WEEKDAYS,
   LAST_HOUR,
   LESSON_TYPES,
   WEEKDAYS,
+  calendarScale,
   findBlockOverlap,
   colorForType,
   findClash,
@@ -23,6 +26,7 @@ import {
   newId,
   placeFor,
   todayIndex,
+  unavailableStretches,
   weekDates,
   type AvailabilityBlock,
   type Lesson,
@@ -31,12 +35,14 @@ import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
 import { colors, lessonColors, radius } from "../theme";
 
-const ROW_HEIGHT = 64; // one hour
 const HOURS = Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, index) => FIRST_HOUR + index); // 6 AM ... 9 PM
 
-// Where a time sits on the grid, in pixels from the top (6 AM = 0).
-const topFor = (minutes: number) => ((minutes - FIRST_HOUR * 60) / 60) * ROW_HEIGHT;
-const DAY_WIDTH = 104;
+// Where a time sits on the grid, in pixels from the top (6 AM = 0). `hourHeight` changes with the zoom.
+const topFor = (minutes: number, hourHeight: number) => ((minutes - FIRST_HOUR * 60) / 60) * hourHeight;
+const ZOOM_STEP = 1.25; // each tap on − or + changes the hour height by a quarter
+const MIN_GRID_HEIGHT = 280; // on a small screen the calendar box never gets shorter than this
+const TIME_COLUMN_WIDTH = 52; // the hour labels down the left side
+const DAY_HEADER_HEIGHT = 52; // the "MON 3" row at the top of each day in Week view
 const MODES = ["Day", "Week"] as const;
 type Mode = (typeof MODES)[number];
 
@@ -49,6 +55,14 @@ function formatRange(offset: number) {
 // The lesson whose preview is open. Kept outside the screen so it's still open when the coach comes back
 // from writing the lesson's note (switching tabs removes and recreates this screen).
 let rememberedPreviewId: string | null = null;
+// The zoom (pixels per hour), kept the same way so it stays as the coach left it when they come back.
+let rememberedHourHeight = DEFAULT_HOUR_HEIGHT;
+
+// The distance between two fingers, for pinch to zoom.
+function fingerDistance(event: GestureResponderEvent) {
+  const [a, b] = event.nativeEvent.touches;
+  return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+}
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
   const { lessons, setLessons, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
@@ -66,6 +80,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [editingId, setEditingId] = useState<string | null>(null);
   // Where the coach tapped on the calendar, so the new lesson starts there (like Google Calendar).
   const [tapped, setTapped] = useState<{ day: number; start: number } | null>(null);
+  // The empty time under the coach's finger right now, shown as a dashed "+" slot until they let go.
+  const [pressedSlot, setPressedSlot] = useState<{ day: number; start: number } | null>(null);
   // While a lesson is being dragged, the page and the week can't scroll, and its day column draws on top.
   const [draggingDay, setDraggingDay] = useState<number | null>(null);
 
@@ -98,12 +114,124 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
-  // Week view is wider than the phone, so "Today" (and opening the calendar) scrolls sideways
-  // to put today's column on screen. The 52 is the hour labels column on the left.
+  // --- Size of the calendar box ---
+  // The calendar is a box you scroll inside (up and down for the hours, sideways for the days). It's
+  // sized to fill the screen once the "Calendar" title has scrolled away, so when the tab opens it
+  // reaches a little past the bottom; swipe up on the week bar or the Day/Week row to see all of it.
+  // To size it we measure: the whole screen area (rootHeight), the title (heading), where the card
+  // starts (cardTop), the bar above the grid (week arrows, and the day strip in Day view), the legend
+  // under it, and the box's width.
+  const screenSize = useWindowDimensions();
+  const [measured, setMeasured] = useState({ rootHeight: 0, heading: 0, cardTop: 0, aboveGrid: 0, legend: 0, gridWidth: 0 });
+  const measure = (key: keyof typeof measured) => (event: { nativeEvent: { layout: { y: number; height: number; width: number } } }) => {
+    const { y, height, width } = event.nativeEvent.layout;
+    const value = key === "cardTop" ? y : key === "gridWidth" ? width : height;
+    setMeasured((current) => (Math.abs(current[key] - value) < 1 ? current : { ...current, [key]: value }));
+  };
+  // cardTop - heading = what stays above the card once the title is scrolled away (the Day/Week row).
+  // 2 = the card's top and bottom border, 12 = a little room above the tab bar.
+  const gridHeight = measured.rootHeight
+    ? Math.max(MIN_GRID_HEIGHT, measured.rootHeight - (measured.cardTop - measured.heading) - measured.aboveGrid - measured.legend - 2 - 12)
+    : Math.max(MIN_GRID_HEIGHT, screenSize.height * 0.5); // first frame, before anything is measured
+  const gridWidth = measured.gridWidth || screenSize.width - 42;
+  const headerHeight = mode === "Week" ? DAY_HEADER_HEIGHT : 0;
+
+  // --- Zoom ---
+  // calendarScale (data.ts) turns the wished-for hour height into the real hour height and day width:
+  // fully zoomed out shows 12 hours and all 7 days in the box.
+  const [wantedHourHeight, setWantedHourHeight] = useState(rememberedHourHeight);
+  const scale = calendarScale(wantedHourHeight, { width: gridWidth - TIME_COLUMN_WIDTH - 1, height: gridHeight - headerHeight });
+  const { hourHeight } = scale;
+  // The start time for a touch `locationY` pixels below 6 AM, rounded down to 15 minutes (tapping just
+  // after 4 PM gives 4:00), and never later than 9:45 PM so a lesson still fits.
+  const slotStart = (locationY: number) => Math.min(FIRST_HOUR * 60 + Math.floor((locationY / hourHeight) * 4) * 15, (LAST_HOUR - 1) * 60 + 45);
+  const dayWidth = mode === "Week" ? scale.dayWidth : 0; // Day view: the one day fills the width
+  const latestScale = useRef(scale);
+  latestScale.current = scale;
+  function zoomTo(wanted: number) {
+    rememberedHourHeight = wanted;
+    setWantedHourHeight(wanted);
+  }
+  // −/+ start from the real (clamped) size, so a tap always does something visible.
+  const zoomBy = (factor: number) => zoomTo(calendarScale(scale.hourHeight * factor, { width: gridWidth - TIME_COLUMN_WIDTH - 1, height: gridHeight - headerHeight }).hourHeight);
+
+  // Pinch with two fingers anywhere on the grid. The responder "captures" two-finger touches before the
+  // scroll views and lessons underneath see them; one finger still scrolls, taps and drags as before.
+  // While pinching, the scroll views are switched off so the pinch doesn't also scroll.
+  const [pinching, setPinching] = useState(false);
+  const pinchStart = useRef<{ distance: number; hourHeight: number } | null>(null);
+  const pincher = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length === 2,
+      onMoveShouldSetPanResponderCapture: (event) => event.nativeEvent.touches.length === 2,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        pinchStart.current = null;
+        setPinching(true);
+      },
+      onPanResponderMove: (event) => {
+        if (event.nativeEvent.touches.length < 2) return;
+        if (!pinchStart.current) {
+          pinchStart.current = { distance: fingerDistance(event), hourHeight: latestScale.current.hourHeight };
+          return;
+        }
+        const wanted = (pinchStart.current.hourHeight * fingerDistance(event)) / pinchStart.current.distance;
+        zoomTo(Math.round(wanted * 2) / 2); // half-pixel steps, so tiny finger jitter doesn't redraw
+      },
+      onPanResponderRelease: () => endPinch(),
+      onPanResponderTerminate: () => endPinch(),
+    }),
+  ).current;
+  function endPinch() {
+    pinchStart.current = null;
+    setPinching(false);
+    zoomTo(latestScale.current.hourHeight); // forget any pinch past the limits
+  }
+
+  // --- Scrolling inside the box ---
+  // The up-and-down scroll holds the hour labels and the days together. Inside it, the days scroll
+  // sideways on their own, so the hour labels stay on the left. The day names row sits above both and
+  // slides sideways with the days (scrollX moves it on the native side, so it doesn't lag behind).
+  const hourScroll = useRef<ScrollView>(null);
   const weekScroll = useRef<ScrollView>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const offset = useRef({ x: 0, y: 0 });
+  const onWeekScroll = Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], {
+    useNativeDriver: true,
+    listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      offset.current.x = event.nativeEvent.contentOffset.x;
+    },
+  });
+  useEffect(() => {
+    // Switching Week/Day makes a new sideways scroll that starts at the left.
+    scrollX.setValue(0);
+    offset.current.x = 0;
+  }, [mode, scrollX]);
+
+  // When the zoom changes, keep the middle of what you were looking at in the middle.
+  const lastSize = useRef({ hourHeight, dayWidth });
+  useEffect(() => {
+    const before = lastSize.current;
+    lastSize.current = { hourHeight, dayWidth };
+    if (before.hourHeight !== hourHeight) {
+      const middle = (gridHeight - headerHeight) / 2;
+      const y = Math.max(0, ((offset.current.y + middle) * hourHeight) / before.hourHeight - middle);
+      offset.current.y = y;
+      hourScroll.current?.scrollTo({ y, animated: false });
+    }
+    if (mode === "Week" && before.dayWidth && before.dayWidth !== dayWidth) {
+      const middle = (gridWidth - TIME_COLUMN_WIDTH) / 2;
+      const x = Math.max(0, ((offset.current.x + middle) * dayWidth) / before.dayWidth - middle);
+      offset.current.x = x;
+      weekScroll.current?.scrollTo({ x, animated: false });
+    }
+  }, [hourHeight, dayWidth, gridHeight, gridWidth, headerHeight, mode]);
+
+  // Week view is usually wider than the box, so "Today" (and opening the calendar) scrolls the days
+  // sideways to put today's column on screen, with yesterday just before it.
   const scrolledOnce = useRef(false);
   function scrollToToday() {
-    weekScroll.current?.scrollTo({ x: Math.max(0, todayIndex() * DAY_WIDTH - 52), animated: true });
+    weekScroll.current?.scrollTo({ x: Math.max(0, (todayIndex() - 1) * scale.dayWidth), animated: true });
   }
   function scrollToTodayOnce() {
     if (scrolledOnce.current || mode !== "Week") return;
@@ -143,29 +271,35 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
 
   return (
-    <View style={{ flex: 1 }}>
-    <Screen scrollEnabled={draggingDay === null}>
-      <Heading description="Tap an empty time to add a lesson. Tap a lesson to preview it below, then drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
+    <View onLayout={measure("rootHeight")} style={{ flex: 1 }}>
+    <Screen scrollEnabled={draggingDay === null && !pinching}>
+      {/* Kept short so the calendar gets the room. Adding a lesson is the "Add lesson" button at the top. */}
+      <View onLayout={measure("heading")}>
+        <Heading description="Tap a time to add a lesson. Pinch or use − and + to zoom." eyebrow="Schedule" title="Calendar" />
+      </View>
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
           <Segmented onChange={setMode} options={MODES} value={mode} />
         </View>
-        <Button icon="plus" label="Add" onPress={() => setEditorOpen(true)} />
+        <Button
+          icon="clock"
+          label={availability.length ? `Availability (${availability.length})` : "Availability"}
+          onPress={() => setAvailabilityOpen(true)}
+          variant="secondary"
+        />
       </View>
-      <Button
-        icon="clock"
-        label={availability.length ? `Availability (${availability.length})` : "Set availability (optional)"}
-        onPress={() => setAvailabilityOpen(true)}
-        style={{ marginBottom: 14 }}
-        variant="secondary"
-      />
 
+      <View onLayout={measure("cardTop")}>
       <Card style={{ padding: 0, overflow: "hidden", marginBottom: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: "#e8edf1" }}>
+        <View onLayout={measure("aboveGrid")}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, padding: 12, borderBottomWidth: 1, borderBottomColor: "#e8edf1" }}>
           <IconButton icon="chevronLeft" label="Previous week" onPress={() => setWeekOffset((value) => value - 1)} size={32} />
           <IconButton icon="chevron" label="Next week" onPress={() => setWeekOffset((value) => value + 1)} size={32} />
-          <Text style={{ flex: 1, fontSize: 14, fontWeight: "700", color: colors.text }}>{formatRange(weekOffset)}</Text>
+          <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "700", color: colors.text }}>{formatRange(weekOffset)}</Text>
+          {/* Zoom out (down to 12 hours × 7 days) and in. Greyed out at the limit. Pinching does the same. */}
+          <IconButton color={scale.canZoomOut ? colors.subtle : colors.input} icon="minus" label="Zoom out" onPress={() => zoomBy(1 / ZOOM_STEP)} size={32} />
+          <IconButton color={scale.canZoomIn ? colors.subtle : colors.input} icon="plus" label="Zoom in" onPress={() => zoomBy(ZOOM_STEP)} size={32} />
           <Button
             label="Today"
             onPress={() => {
@@ -198,133 +332,240 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
             })}
           </ScrollView>
         ) : null}
+        </View>
 
-        <ScrollView horizontal={mode === "Week"} key={mode} onContentSizeChange={scrollToTodayOnce} ref={weekScroll} scrollEnabled={mode === "Week" && draggingDay === null} showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: "row" }}>
-            <View style={{ width: 52 }}>
-              <View style={{ height: mode === "Week" ? 52 : 0 }} />
-              {HOURS.map((hour) => (
-                <View key={hour} style={{ height: ROW_HEIGHT, alignItems: "center", paddingTop: 4 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "600", color: "#929da7" }}>{formatHour(hour)}</Text>
-                </View>
-              ))}
-            </View>
-            {visibleDays.map((dayIndex) => {
-              const day = dates[dayIndex];
-              return (
-                <View
-                  key={day.label}
-                  style={{
-                    width: mode === "Week" ? DAY_WIDTH : undefined,
-                    flex: mode === "Day" ? 1 : undefined,
-                    minWidth: mode === "Day" ? 240 : undefined,
-                    borderLeftWidth: 1,
-                    borderLeftColor: colors.borderSoft,
-                    backgroundColor: day.isToday ? "#f8fbfb" : undefined,
-                    zIndex: draggingDay === dayIndex ? 10 : 0, // a lesson dragged to another day stays visible
-                  }}
-                >
-                  {mode === "Week" ? (
-                    <View style={{ height: 52, alignItems: "center", justifyContent: "center", borderBottomWidth: 1, borderBottomColor: "#e8edf1" }}>
-                      <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, letterSpacing: 1 }}>{day.label}</Text>
+        {/* The calendar box: a fixed height that fits the screen, scrolled inside. */}
+        <View {...pincher.panHandlers} onLayout={measure("gridWidth")} style={{ height: gridHeight }}>
+          {mode === "Week" ? (
+            // Day names. Not inside the up-and-down scroll, so they stay at the top; they slide sideways
+            // with the days (translateX follows the days' scroll).
+            <View style={{ flexDirection: "row", height: DAY_HEADER_HEIGHT, borderBottomWidth: 1, borderBottomColor: "#e8edf1" }}>
+              <View style={{ width: TIME_COLUMN_WIDTH, borderRightWidth: 1, borderRightColor: colors.borderSoft }} />
+              <View style={{ flex: 1, overflow: "hidden" }}>
+                <Animated.View style={{ flexDirection: "row", transform: [{ translateX: Animated.multiply(scrollX, -1) }] }}>
+                  {visibleDays.map((dayIndex, position) => {
+                    const day = dates[dayIndex];
+                    return (
                       <View
+                        key={day.label}
                         style={{
-                          marginTop: 3,
-                          width: 26,
-                          height: 26,
-                          borderRadius: 13,
+                          width: dayWidth,
+                          height: DAY_HEADER_HEIGHT - 1,
                           alignItems: "center",
                           justifyContent: "center",
-                          backgroundColor: day.isToday ? colors.navy : "transparent",
+                          borderLeftWidth: position === 0 ? 0 : 1,
+                          borderLeftColor: colors.borderSoft,
+                          backgroundColor: day.isToday ? "#f8fbfb" : undefined,
                         }}
                       >
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: day.isToday ? colors.white : "#40515f" }}>{day.date.getDate()}</Text>
-                      </View>
-                    </View>
-                  ) : null}
-                  <View style={{ position: "relative" }}>
-                    {/* Tap an empty spot to add a lesson there. The time is rounded down to the 15 minutes
-                        under your finger, e.g. tapping just after 4 PM starts the lesson at 4:00. Lessons sit
-                        on top of this, so tapping a lesson still selects it instead. */}
-                    <Pressable
-                      accessibilityHint="Adds a lesson at this time"
-                      accessibilityLabel={`Add a lesson on ${FULL_WEEKDAYS[dayIndex]}`}
-                      onPress={(event) => {
-                        const quarters = Math.floor((event.nativeEvent.locationY / ROW_HEIGHT) * 4);
-                        const start = Math.min(FIRST_HOUR * 60 + quarters * 15, (LAST_HOUR - 1) * 60 + 45);
-                        setSelectedId(null);
-                        setDetailId(null); // tapping an empty time closes the lesson preview
-                        setTapped({ day: dayIndex, start });
-                        setEditorOpen(true);
-                      }}
-                    >
-                      {/* pointerEvents="none" so the tap lands on the Pressable itself: then locationY is measured
-                          from the top of the whole column (6 AM), not from the top of one hour row. */}
-                      <View pointerEvents="none">
-                        {HOURS.map((hour) => (
-                          <View key={hour} style={{ height: ROW_HEIGHT, borderBottomWidth: 1, borderBottomColor: colors.borderSoft }} />
-                        ))}
-                      </View>
-                    </Pressable>
-                    {/* Optional availability blocks sit behind the lessons as a soft shaded area. */}
-                    {availability
-                      .filter((block) => block.day === dayIndex)
-                      .map((block) => (
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, letterSpacing: 1 }}>{day.label}</Text>
                         <View
-                          key={block.id}
-                          pointerEvents="none"
                           style={{
-                            position: "absolute",
-                            top: topFor(block.start),
-                            height: topFor(block.end) - topFor(block.start),
-                            left: 0,
-                            right: 0,
-                            backgroundColor: colors.tealSoft,
-                            borderLeftWidth: 2,
-                            borderLeftColor: "#bcd9db",
-                            paddingHorizontal: 5,
-                            paddingTop: 2,
+                            marginTop: 3,
+                            width: 26,
+                            height: 26,
+                            borderRadius: 13,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: day.isToday ? colors.navy : "transparent",
                           }}
                         >
-                          {block.place ? (
-                            <Text numberOfLines={1} style={{ fontSize: 9, fontWeight: "700", color: "#5f9195" }}>
-                              {block.place}
-                            </Text>
-                          ) : null}
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: day.isToday ? colors.white : "#40515f" }}>{day.date.getDate()}</Text>
                         </View>
-                      ))}
-                    {lessons
-                      .filter((lesson) => lesson.day === dayIndex && isLessonActiveOn(lesson, day.date))
-                      .map((lesson) => (
-                        <LessonBlock
-                          active={lesson.id === selectedId}
-                          dayWidth={mode === "Week" ? DAY_WIDTH : 0}
-                          key={lesson.id}
-                          lesson={lesson}
-                          name={studentById(lesson.studentId)?.name.split(" ")[0] ?? "Removed"}
-                          onDragChange={(dragging) => setDraggingDay(dragging ? lesson.day : null)}
-                          onMove={(changes) => moveLesson(lesson, changes)}
-                          onSelect={() => {
-                            // Tapping a lesson opens its detail window. It also stays selected after you
-                            // close the window, so you can then drag it or its bottom edge.
-                            setSelectedId(lesson.id);
-                            setDetailId(lesson.id);
-                          }}
-                        />
-                      ))}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
+                      </View>
+                    );
+                  })}
+                </Animated.View>
+              </View>
+            </View>
+          ) : null}
 
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 14, padding: 12, borderTopWidth: 1, borderTopColor: "#e8edf1" }}>
+          {/* Up and down: the hour labels and the days move together. */}
+          <ScrollView
+            onScroll={(event) => {
+              offset.current.y = event.nativeEvent.contentOffset.y;
+            }}
+            ref={hourScroll}
+            scrollEnabled={draggingDay === null && !pinching}
+            scrollEventThrottle={16}
+            style={{ flex: 1 }}
+          >
+            <View style={{ flexDirection: "row" }}>
+              {/* The hour labels sit outside the sideways scroll, so they stay on the left while the days scroll past. */}
+              <View style={{ width: TIME_COLUMN_WIDTH, borderRightWidth: 1, borderRightColor: colors.borderSoft, backgroundColor: colors.card }}>
+                {HOURS.map((hour) => (
+                  <View key={hour} style={{ height: hourHeight, alignItems: "center", paddingTop: 4 }}>
+                    <Text style={{ fontSize: 10, fontWeight: "600", color: "#929da7" }}>{formatHour(hour)}</Text>
+                  </View>
+                ))}
+              </View>
+              {(() => {
+                const columns = visibleDays.map((dayIndex, position) => {
+                  const day = dates[dayIndex];
+                  return (
+                    <View
+                      key={day.label}
+                      style={{
+                        width: mode === "Week" ? dayWidth : undefined,
+                        flex: mode === "Day" ? 1 : undefined,
+                        borderLeftWidth: position === 0 ? 0 : 1, // the hour labels column draws the first line
+                        borderLeftColor: colors.borderSoft,
+                        backgroundColor: day.isToday ? "#f8fbfb" : undefined,
+                        zIndex: draggingDay === dayIndex ? 10 : 0, // a lesson dragged to another day stays visible
+                      }}
+                    >
+                      <View style={{ position: "relative" }}>
+                        {/* Tap an empty spot to add a lesson there. The time is rounded down to the 15 minutes
+                            under your finger, e.g. tapping just after 4 PM starts the lesson at 4:00. Lessons sit
+                            on top of this, so tapping a lesson still selects it instead. */}
+                        <Pressable
+                          accessibilityHint="Adds a lesson at this time"
+                          accessibilityLabel={`Add a lesson on ${FULL_WEEKDAYS[dayIndex]}`}
+                          // Touching an empty time shows a dashed "+" slot where the lesson would go (the phone's
+                          // version of hovering). The short delay means a swipe to scroll doesn't flash it.
+                          onPressIn={(event) => setPressedSlot({ day: dayIndex, start: slotStart(event.nativeEvent.locationY) })}
+                          onPressOut={() => setPressedSlot(null)}
+                          unstable_pressDelay={90}
+                          onPress={(event) => {
+                            const start = slotStart(event.nativeEvent.locationY);
+                            setSelectedId(null);
+                            setDetailId(null); // tapping an empty time closes the lesson preview
+                            setTapped({ day: dayIndex, start });
+                            setEditorOpen(true);
+                          }}
+                        >
+                          {/* pointerEvents="none" so the tap lands on the Pressable itself: then locationY is measured
+                              from the top of the whole column (6 AM), not from the top of one hour row. */}
+                          <View pointerEvents="none">
+                            {HOURS.map((hour) => (
+                              <View key={hour} style={{ height: hourHeight, justifyContent: "flex-end" }}>
+                                <DashedLine />
+                              </View>
+                            ))}
+                          </View>
+                        </Pressable>
+                        {/* On a day with availability blocks, the time outside them gets light diagonal stripes
+                            (the background stays white). It's only a hint: tapping there still adds a lesson
+                            (pointerEvents="none"), and lessons are drawn on top. Days without blocks stay plain. */}
+                        {unavailableStretches(dayIndex, availability).map((stretch) => {
+                          const top = topFor(stretch.start, hourHeight);
+                          const height = topFor(stretch.end, hourHeight) - top;
+                          return (
+                            <View key={`off-${stretch.start}`} pointerEvents="none" style={{ position: "absolute", top, height, left: 0, right: 0, overflow: "hidden" }}>
+                              <Stripes height={height} width={dayWidth || gridWidth} />
+                            </View>
+                          );
+                        })}
+                        {/* Availability blocks: a faint dashed outline, so open time reads as a slot you can fill.
+                            The place name sits in the top corner. */}
+                        {availability
+                          .filter((block) => block.day === dayIndex)
+                          .map((block) => (
+                            <View
+                              key={block.id}
+                              pointerEvents="none"
+                              style={{
+                                position: "absolute",
+                                top: topFor(block.start, hourHeight) + 1,
+                                height: topFor(block.end, hourHeight) - topFor(block.start, hourHeight) - 2,
+                                left: 2,
+                                right: 2,
+                                borderWidth: 1,
+                                borderStyle: "dashed",
+                                borderColor: colors.availableEdge,
+                                borderRadius: radius.sm,
+                                paddingHorizontal: 4,
+                                paddingTop: 2,
+                              }}
+                            >
+                              {block.place ? (
+                                <Text numberOfLines={1} style={{ fontSize: 9, fontWeight: "700", color: "#5f9195" }}>
+                                  {block.place}
+                                </Text>
+                              ) : null}
+                            </View>
+                          ))}
+                        {pressedSlot?.day === dayIndex ? (
+                          <View
+                            pointerEvents="none"
+                            style={{
+                              position: "absolute",
+                              top: topFor(pressedSlot.start, hourHeight) + 1,
+                              height: Math.max(16, (Math.min(settings.lessonLength, LAST_HOUR * 60 - pressedSlot.start) / 60) * hourHeight - 2),
+                              left: 3,
+                              right: 3,
+                              borderWidth: 1.5,
+                              borderStyle: "dashed",
+                              borderColor: colors.teal,
+                              borderRadius: radius.sm,
+                              backgroundColor: colors.tealSoft,
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Icon color={colors.teal} name="plus" size={16} />
+                          </View>
+                        ) : null}
+                        {lessons
+                          .filter((lesson) => lesson.day === dayIndex && isLessonActiveOn(lesson, day.date))
+                          .map((lesson) => (
+                            <LessonBlock
+                              active={lesson.id === selectedId}
+                              dayWidth={dayWidth}
+                              hourHeight={hourHeight}
+                              key={lesson.id}
+                              lesson={lesson}
+                              name={studentById(lesson.studentId)?.name.split(" ")[0] ?? "Removed"}
+                              onDragChange={(dragging) => setDraggingDay(dragging ? lesson.day : null)}
+                              onMove={(changes) => moveLesson(lesson, changes)}
+                              onSelect={() => {
+                                // Tapping a lesson opens its detail window. It also stays selected after you
+                                // close the window, so you can then drag it or its bottom edge.
+                                setSelectedId(lesson.id);
+                                setDetailId(lesson.id);
+                              }}
+                            />
+                          ))}
+                      </View>
+                    </View>
+                  );
+                });
+                // Week view: the days scroll sideways. Day view: the one day fills the width.
+                return mode === "Week" ? (
+                  <Animated.ScrollView
+                    horizontal
+                    onContentSizeChange={scrollToTodayOnce}
+                    onScroll={onWeekScroll}
+                    ref={weekScroll}
+                    scrollEnabled={draggingDay === null && !pinching}
+                    scrollEventThrottle={16}
+                    showsHorizontalScrollIndicator={false}
+                    style={{ flex: 1 }}
+                  >
+                    {columns}
+                  </Animated.ScrollView>
+                ) : (
+                  <View style={{ flex: 1, flexDirection: "row" }}>{columns}</View>
+                );
+              })()}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View onLayout={measure("legend")} style={{ flexDirection: "row", flexWrap: "wrap", gap: 14, padding: 12, borderTopWidth: 1, borderTopColor: "#e8edf1" }}>
           <Legend color={lessonColors.teal.dot} label="Freestyle" />
           <Legend color={lessonColors.sand.dot} label="Public" />
           <Legend color={lessonColors.purple.dot} label="Off-ice" />
+          {/* Only once there's availability to compare against. */}
+          {availability.length ? (
+            <>
+              <Legend color={colors.card} dashed edge={colors.availableEdge} label="Available" square />
+              <Legend color={colors.card} edge={colors.border} label="Not available" square striped />
+            </>
+          ) : null}
         </View>
       </Card>
+      </View>
 
       <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
         <Text style={{ fontSize: 10, fontWeight: "700", letterSpacing: 1.5, color: "#a9dfe1" }}>EVERY WEEK</Text>
@@ -634,6 +875,7 @@ function LessonBlock({
   name,
   active,
   dayWidth,
+  hourHeight,
   onSelect,
   onMove,
   onDragChange,
@@ -642,6 +884,7 @@ function LessonBlock({
   name: string;
   active: boolean;
   dayWidth: number; // 0 in Day view, where lessons can only move up and down
+  hourHeight: number; // pixels per hour at the current zoom
   onSelect: () => void;
   onMove: (changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) => void;
   onDragChange: (dragging: boolean) => void;
@@ -650,10 +893,10 @@ function LessonBlock({
   const [move, setMove] = useState<{ dx: number; dy: number } | null>(null);
   const [stretch, setStretch] = useState<number | null>(null);
   // The responders are made once, so they read the newest props through this ref (same trick as RinkMap).
-  const latest = useRef({ lesson, active, dayWidth, onMove, onDragChange });
-  latest.current = { lesson, active, dayWidth, onMove, onDragChange };
+  const latest = useRef({ lesson, active, dayWidth, hourHeight, onMove, onDragChange });
+  latest.current = { lesson, active, dayWidth, hourHeight, onMove, onDragChange };
 
-  const snap = (pixels: number) => Math.round(((pixels / ROW_HEIGHT) * 60) / 15) * 15; // pixels → minutes, in 15s
+  const snap = (pixels: number) => Math.round(((pixels / latest.current.hourHeight) * 60) / 15) * 15; // pixels → minutes, in 15s
 
   // Where the lesson would land for a drag of (dx, dy), kept inside the calendar's hours and days.
   function landing(dx: number, dy: number) {
@@ -712,25 +955,32 @@ function LessonBlock({
   const duration = stretch !== null ? stretched(stretch) : lesson.duration;
   const palette = lessonColors[lesson.color];
   const dragging = move !== null || stretch !== null;
+  // Zoomed out, lessons get small: drop the second line and the padding so the name still fits.
+  const height = Math.max(14, (duration / 60) * hourHeight - 4);
+  const compact = height < 36;
+  const inset = dayWidth && dayWidth < 60 ? 2 : 5;
 
   return (
     <View
       {...mover.panHandlers}
       style={{
         position: "absolute",
-        top: topFor(preview.start) + 2,
-        height: Math.max(30, (duration / 60) * ROW_HEIGHT - 4),
-        left: 5 + (preview.day - lesson.day) * dayWidth,
-        right: 5 - (preview.day - lesson.day) * dayWidth,
+        top: topFor(preview.start, hourHeight) + 2,
+        height,
+        left: inset + (preview.day - lesson.day) * dayWidth,
+        right: inset - (preview.day - lesson.day) * dayWidth,
         zIndex: dragging ? 5 : active ? 2 : 1,
         opacity: dragging ? 0.9 : 1,
-        shadowColor: "#000",
-        shadowOpacity: dragging ? 0.18 : 0,
-        shadowRadius: 8,
-        shadowOffset: { width: 0, height: 3 },
+        // A small shadow lifts the card off the stripes and dashed lines behind it; a bigger one while dragging.
+        shadowColor: colors.text,
+        shadowOpacity: dragging ? 0.18 : 0.12,
+        shadowRadius: dragging ? 8 : 2.5,
+        shadowOffset: { width: 0, height: dragging ? 3 : 1 },
       }}
     >
       <Pressable
+        // The card only shows the length (the color says the type), so VoiceOver gets the full details.
+        accessibilityLabel={`${name} · ${lesson.type} · ${lesson.duration}m`}
         accessibilityHint={active ? "Drag to move, or drag the bottom handle to change the length" : "Selects the lesson"}
         accessibilityRole="button"
         onPress={onSelect}
@@ -741,17 +991,26 @@ function LessonBlock({
           borderLeftColor: palette.border,
           backgroundColor: palette.bg,
           borderRadius: radius.sm,
-          padding: 7,
+          paddingHorizontal: compact ? 4 : 7,
+          paddingVertical: compact ? 1 : 7,
           borderWidth: active ? 1.5 : 0,
           borderColor: active ? palette.border : undefined,
         }}
       >
-        <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: "700", color: palette.text }}>
-          {name}
+        <Text numberOfLines={1} style={{ fontSize: compact ? 10 : 12, fontWeight: "700", color: palette.text }}>
+          {compact && dragging ? formatTime(preview.start) : name}
         </Text>
-        <Text numberOfLines={1} style={{ fontSize: 10, color: palette.text, opacity: 0.75, marginTop: 2 }}>
-          {dragging ? `${formatTime(preview.start)} · ${duration}m` : `${lesson.type} · ${lesson.duration}m`}
-        </Text>
+        {/* Second line: a clock and the length ("60m"), short enough not to get cut off in a narrow
+            day. The lesson type is already shown by the color (see the legend). While dragging it shows
+            the new start time, and while stretching the new length. */}
+        {compact ? null : (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3, marginTop: 2, opacity: 0.75 }}>
+            <Icon color={palette.text} name="clock" size={10} />
+            <Text numberOfLines={1} style={{ flexShrink: 1, fontSize: 10, color: palette.text }}>
+              {stretch !== null ? `${duration}m` : move !== null ? formatTime(preview.start) : `${lesson.duration}m`}
+            </Text>
+          </View>
+        )}
       </Pressable>
       {active ? (
         // The resize handle: a small bar on the bottom edge with a bigger invisible touch area.
@@ -996,11 +1255,65 @@ function Meta({ icon, text }: { icon: "clock" | "calendar" | "notes" | "home"; t
   );
 }
 
-function Legend({ color, label }: { color: string; label: string }) {
+// A dot for a lesson type, or a small square for the availability marks: dashed for available,
+// striped for not available (matching the grid).
+function Legend({
+  color,
+  label,
+  square,
+  edge,
+  dashed,
+  striped,
+}: {
+  color: string;
+  label: string;
+  square?: boolean;
+  edge?: string;
+  dashed?: boolean;
+  striped?: boolean;
+}) {
+  const size = square ? 12 : 8;
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: square ? 2 : 4,
+          backgroundColor: color,
+          borderWidth: edge ? 1 : 0,
+          borderStyle: dashed ? "dashed" : "solid",
+          borderColor: edge,
+          overflow: "hidden",
+        }}
+      >
+        {striped ? <Stripes height={size} width={size} /> : null}
+      </View>
       <Text style={{ fontSize: 11, fontWeight: "600", color: "#75828e" }}>{label}</Text>
     </View>
+  );
+}
+
+// A faint dashed line across the grid at the end of each hour, so open time matches the dashed
+// "Available" mark in the legend. iOS only draws dashed borders when all four sides are dashed, so this
+// is a 1 px tall window onto the top edge of a dashed box.
+function DashedLine() {
+  return (
+    <View style={{ height: 1, overflow: "hidden" }}>
+      <View style={{ height: 2, borderWidth: 1, borderStyle: "dashed", borderColor: colors.border }} />
+    </View>
+  );
+}
+
+// Light diagonal stripes filling a width × height area, for time outside the coach's availability.
+// One SVG path of parallel 45° lines, 8 px apart; the SVG cuts off whatever runs past its edges.
+const STRIPE_GAP = 8;
+function Stripes({ width, height }: { width: number; height: number }) {
+  let path = "";
+  for (let x = -height; x < width; x += STRIPE_GAP) path += `M${x} ${height}L${x + height} 0`;
+  return (
+    <Svg height={height} style={{ position: "absolute", top: 0, left: 0 }} width={width}>
+      <Path d={path} stroke={colors.unavailable} strokeWidth={1.5} />
+    </Svg>
   );
 }

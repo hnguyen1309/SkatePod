@@ -177,6 +177,35 @@ export type Settings = {
 export const FIRST_HOUR = 6; // 6 AM
 export const LAST_HOUR = 22; // 10 PM (the calendar ends here)
 
+// Calendar zoom. The coach pinches (or taps − / +) to change how tall an hour is; the day columns get
+// wider and narrower along with it. Fully zoomed out, 12 hours and all 7 days fit in the calendar box.
+export const MIN_ZOOM_HOURS = 12; // hours that fit top to bottom when fully zoomed out
+export const DEFAULT_HOUR_HEIGHT = 64; // pixels per hour when the calendar first opens
+export const MAX_HOUR_HEIGHT = 96; // fully zoomed in (1.5 × the default)
+export const MAX_DAY_WIDTH = 156; // a day column's width when fully zoomed in
+
+/**
+ * The size of one hour (height) and one day (width) on the calendar grid, in pixels, for a wished-for
+ * hour height and the box the grid is shown in (`viewport`: the space for the day columns, without the
+ * hour labels or the day names). The hour height is kept between "12 hours fit" and MAX_HOUR_HEIGHT,
+ * and the day width moves with it: 7 days fit the width when fully zoomed out, MAX_DAY_WIDTH when fully in.
+ */
+export function calendarScale(hourHeight: number, viewport: { width: number; height: number }) {
+  const minHour = viewport.height / MIN_ZOOM_HOURS;
+  const minDay = viewport.width / 7;
+  // On a very big screen (iPad) "fully zoomed out" can already be bigger than the usual maximum.
+  const maxHour = Math.max(minHour, MAX_HOUR_HEIGHT);
+  const maxDay = Math.max(minDay, MAX_DAY_WIDTH);
+  const hour = Math.min(maxHour, Math.max(minHour, hourHeight));
+  const zoom = maxHour === minHour ? 1 : (hour - minHour) / (maxHour - minHour); // 0 = fully out, 1 = fully in
+  return {
+    hourHeight: hour,
+    dayWidth: minDay + zoom * (maxDay - minDay),
+    canZoomOut: hour > minHour + 0.5,
+    canZoomIn: hour < maxHour - 0.5,
+  };
+}
+
 /** 570 → "9:30 AM", 780 → "1:00 PM". */
 export function formatTime(minutes: number) {
   const hour24 = Math.floor(minutes / 60);
@@ -210,6 +239,32 @@ export function placeFor(lesson: Pick<Lesson, "day" | "start">, blocks: Availabi
 /** The block already in the way of `block` on the same day, or undefined if there's room. */
 export function findBlockOverlap(block: Pick<AvailabilityBlock, "id" | "day" | "start" | "end">, blocks: AvailabilityBlock[]) {
   return blocks.find((other) => other.id !== block.id && other.day === block.day && block.start < other.end && other.start < block.end);
+}
+
+/**
+ * The stretches of one day (inside the calendar's 6 AM–10 PM) that fall outside every availability block,
+ * so the calendar can grey them out a little. It's only a visual hint: lessons can still go there.
+ *
+ * A day with no blocks returns nothing (no grey at all). Availability is optional and coaches often fill
+ * in only some days, so "no blocks on Monday" means "not set", not "not available". That also means a
+ * coach who never sets availability sees a plain calendar.
+ *
+ * Example: Tuesday 3–6 PM → [6 AM–3 PM, 6 PM–10 PM].
+ */
+export function unavailableStretches(day: number, blocks: Pick<AvailabilityBlock, "day" | "start" | "end">[]) {
+  const dayStart = FIRST_HOUR * 60;
+  const dayEnd = LAST_HOUR * 60;
+  const today = blocks.filter((block) => block.day === day).sort((a, b) => a.start - b.start);
+  if (!today.length) return [];
+  const stretches: { start: number; end: number }[] = [];
+  let free = dayStart; // the earliest time not yet covered by a block
+  for (const block of today) {
+    if (block.start > free) stretches.push({ start: free, end: Math.min(block.start, dayEnd) });
+    free = Math.max(free, block.end);
+    if (free >= dayEnd) break;
+  }
+  if (free < dayEnd) stretches.push({ start: free, end: dayEnd });
+  return stretches.filter((stretch) => stretch.end > stretch.start);
 }
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
