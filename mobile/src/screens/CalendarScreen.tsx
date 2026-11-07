@@ -10,6 +10,7 @@ import {
   LESSON_TYPES,
   WEEKDAYS,
   findBlockOverlap,
+  colorForType,
   findClash,
   findLessonNote,
   syncLessonNote,
@@ -24,7 +25,7 @@ import {
 } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
-import { colors, lessonColors, radius, type LessonColor } from "../theme";
+import { colors, lessonColors, radius } from "../theme";
 
 const ROW_HEIGHT = 64; // one hour
 const HOURS = Array.from({ length: LAST_HOUR - FIRST_HOUR }, (_, index) => FIRST_HOUR + index); // 6 AM ... 9 PM
@@ -93,6 +94,19 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
   const [availabilityOpen, setAvailabilityOpen] = useState(false);
 
+  // Week view is wider than the phone, so "Today" (and opening the calendar) scrolls sideways
+  // to put today's column on screen. The 52 is the hour labels column on the left.
+  const weekScroll = useRef<ScrollView>(null);
+  const scrolledOnce = useRef(false);
+  function scrollToToday() {
+    weekScroll.current?.scrollTo({ x: Math.max(0, todayIndex() * DAY_WIDTH - 52), animated: true });
+  }
+  function scrollToTodayOnce() {
+    if (scrolledOnce.current || mode !== "Week") return;
+    scrolledOnce.current = true;
+    scrollToToday();
+  }
+
   useEffect(() => {
     if (!intent) return;
     if (intent.kind === "add") setEditorOpen(true);
@@ -153,6 +167,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
             onPress={() => {
               setWeekOffset(0);
               setSelectedDay(todayIndex());
+              scrollToToday();
             }}
             style={{ minHeight: 32, paddingVertical: 6, paddingHorizontal: 10 }}
             variant="secondary"
@@ -180,7 +195,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           </ScrollView>
         ) : null}
 
-        <ScrollView horizontal={mode === "Week"} key={mode} scrollEnabled={mode === "Week" && draggingDay === null} showsHorizontalScrollIndicator={false}>
+        <ScrollView horizontal={mode === "Week"} key={mode} onContentSizeChange={scrollToTodayOnce} ref={weekScroll} scrollEnabled={mode === "Week" && draggingDay === null} showsHorizontalScrollIndicator={false}>
           <View style={{ flexDirection: "row" }}>
             <View style={{ width: 52 }}>
               <View style={{ height: mode === "Week" ? 52 : 0 }} />
@@ -425,7 +440,6 @@ function LessonEditor({
     setDuration(minutes);
     setDurationText(String(minutes));
   }
-  const [color, setColor] = useState<LessonColor>(initial?.color ?? "teal");
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? id;
 
   function submit() {
@@ -443,7 +457,7 @@ function LessonEditor({
       return;
     }
     // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
-    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color };
+    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type) };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -491,13 +505,6 @@ function LessonEditor({
         value={durationText}
       />
       <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
-      <PickerField
-        label="Color"
-        onChange={setColor}
-        options={["teal", "sand", "purple"] as const}
-        renderLabel={(value) => ({ teal: "Freestyle", sand: "Public", purple: "Off-ice" })[value]}
-        value={color}
-      />
     </Sheet>
   );
 }

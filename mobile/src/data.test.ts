@@ -3,7 +3,7 @@
 // They use Node's built-in test runner, so there's nothing extra to install, and they never open the app.
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { syncLessonNote, type Lesson, type Note } from "./data.ts";
+import { colorForType, syncLessonNote, upgradeLesson, type Lesson, type Note } from "./data.ts";
 
 // Made-up data: Lily's Thursday 9:00 AM Freestyle lesson, 105 minutes.
 const lesson: Lesson = { id: "l2", studentId: "s2", day: 3, start: 9 * 60, type: "Freestyle", duration: 105, color: "teal" };
@@ -79,5 +79,25 @@ describe("syncLessonNote: a lesson's note follows changes to the lesson", () => 
   test("with no note for the lesson, the notes come back unchanged", () => {
     const notes: Note[] = [];
     assert.equal(syncLessonNote(notes, lesson, { ...lesson, type: "Public" }, thursday9am, thursday9am), notes);
+  });
+});
+
+describe("lesson colors come from the lesson type", () => {
+  test("each type has its own color, matching the calendar legend", () => {
+    assert.equal(colorForType("Freestyle"), "teal");
+    assert.equal(colorForType("Public"), "sand");
+    assert.equal(colorForType("Off-ice"), "purple");
+  });
+
+  test("a saved lesson whose color doesn't match its type is fixed when it loads", () => {
+    const mismatched = { ...lesson, type: "Public", color: "teal" as const };
+    assert.equal(upgradeLesson(mismatched).color, "sand");
+  });
+
+  test("a lesson saved with the old fixed times gets a start time and the right color", () => {
+    const { start, ...old } = lesson;
+    const upgraded = upgradeLesson({ ...old, row: 2, type: "Off-ice" } as Lesson & { row: number });
+    assert.equal(upgraded.start, 11 * 60);
+    assert.equal(upgraded.color, "purple");
   });
 });

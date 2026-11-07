@@ -188,10 +188,12 @@ export function formatHour(hour24: number) {
 // Before Nov 2026 lessons could only start at 7, 9, 11 AM, 1 or 3 PM and were saved as a `row`
 // (0–4) instead of `start`. This turns those old saved lessons into the new shape so none are lost.
 const OLD_ROW_HOURS = [7, 9, 11, 13, 15];
+// Also fixes lessons saved when the color could be picked separately, so the color always matches the type.
 export function upgradeLesson(lesson: Lesson & { row?: number }): Lesson {
-  if (typeof lesson.start === "number") return lesson;
+  const color = colorForType(lesson.type);
+  if (typeof lesson.start === "number") return lesson.color === color ? lesson : { ...lesson, color };
   const { row, ...rest } = lesson;
-  return { ...rest, start: (OLD_ROW_HOURS[row ?? 0] ?? 9) * 60 };
+  return { ...rest, color, start: (OLD_ROW_HOURS[row ?? 0] ?? 9) * 60 };
 }
 
 /** The place of the availability block a lesson falls in, if any (e.g. "North Rink"). */
@@ -206,6 +208,12 @@ export function findBlockOverlap(block: Pick<AvailabilityBlock, "id" | "day" | "
 }
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
+
+// Each lesson type has its own color on the calendar (the legend under it): the color isn't picked by hand.
+const TYPE_COLORS: Record<string, LessonColor> = { Freestyle: "teal", Public: "sand", "Off-ice": "purple" };
+export function colorForType(type: string): LessonColor {
+  return TYPE_COLORS[type] ?? "teal";
+}
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
 export const DISCIPLINE_CATEGORIES: { id: DisciplineCategory; name: string }[] = [
