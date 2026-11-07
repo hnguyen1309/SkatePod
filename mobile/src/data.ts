@@ -447,7 +447,7 @@ export function findLessonNote(notes: Note[], lesson: Pick<Lesson, "id" | "stude
 
 /**
  * After a lesson is edited, moved or resized, the note written for it (that week) follows the change:
- * new type, length, date and time. The title changes too, but only if it's the one the app made up
+ * new student, type, length, date and time. The title changes too, but only if it's the one the app made up
  * ("Freestyle lesson"); a title the coach typed is kept. Returns the notes unchanged if there's no note.
  * `beforeDate`/`afterDate` are when the lesson falls in the week on screen, before and after the change.
  */
@@ -459,6 +459,7 @@ export function syncLessonNote(notes: Note[], before: Lesson, after: Lesson, bef
     item.id === note.id
       ? {
           ...item,
+          studentId: after.studentId, // the student is changed on the lesson, never on the note
           lessonId: after.id,
           date: afterDate.toISOString(),
           lessonType: after.type,

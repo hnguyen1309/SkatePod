@@ -38,6 +38,11 @@ describe("syncLessonNote: a lesson's note follows changes to the lesson", () => 
     assert.equal(updated.observations, "Draft lesson note"); // what the coach wrote is kept
   });
 
+  test("changing the lesson's student moves the note to that student", () => {
+    const [updated] = syncLessonNote([note()], lesson, { ...lesson, studentId: "s1" }, thursday9am, thursday9am);
+    assert.equal(updated.studentId, "s1");
+  });
+
   test("a title the coach typed is kept", () => {
     const edited = { ...lesson, type: "Public" };
     const [updated] = syncLessonNote([note({ title: "Spin session" })], lesson, edited, thursday9am, thursday9am);

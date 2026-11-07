@@ -165,6 +165,9 @@ function NoteEditor({
   const set = (changes: Partial<Note>) => setDraft((current) => ({ ...current, ...changes }));
   const studentIds = students.map((student) => student.id);
   const studentName = studentById(draft.studentId)?.name ?? "Removed student";
+  // The student can only be picked for a brand-new note. Once a note is saved, or when it was started
+  // from a calendar lesson, it belongs to that student: change the student on the lesson instead.
+  const studentLocked = !isNew || Boolean(draft.lessonId);
 
   function addSkill() {
     const skill = newSkill.trim();
@@ -206,7 +209,15 @@ function NoteEditor({
         {new Date(draft.date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </Text>
 
-      {studentIds.length ? (
+      {studentLocked ? (
+        <View style={{ marginBottom: 16 }}>
+          <Label>Student</Label>
+          <Text style={{ fontSize: 16, fontWeight: "700", color: colors.text }}>{studentName}</Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+            {draft.lessonId ? "To change the student, edit the lesson on the Calendar." : "A saved note stays with its student."}
+          </Text>
+        </View>
+      ) : studentIds.length ? (
         <PickerField
           label="Student"
           onChange={(studentId: string) => set({ studentId })}
