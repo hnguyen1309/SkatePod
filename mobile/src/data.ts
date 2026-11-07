@@ -33,8 +33,8 @@ export type Student = {
   id: string;
   name: string;
   disciplines: StudentDiscipline[]; // can be empty
-  focus: string; // the next lesson isn't stored here: it comes from the calendar (findNextLesson)
-  progress: number;
+  // The next lesson isn't stored here: it comes from the calendar (findNextLesson). "Current focus"
+  // and a hand-set progress % were removed (Nov 2026): nobody kept them up to date.
   tone: Tone;
 };
 
@@ -42,10 +42,15 @@ export type Lesson = {
   id: string;
   studentId: string;
   day: number; // 0 = Monday ... 6 = Sunday (weekly schedule)
-  row: number; // index into TIMES
+  start: number; // minutes after midnight, e.g. 9:30 AM = 570 (any minute, e.g. 6:32 AM = 392)
   type: string;
   duration: number; // minutes
   color: LessonColor;
+  createdAt?: string; // when the lesson was added to the calendar (lessons from before start/end dates)
+  // The weekly lesson runs from startDate (today or later when it's created) until endDate, if any.
+  // Both are calendar days like "2026-11-12". Lessons saved before these existed have neither: always on.
+  startDate?: string;
+  endDate?: string;
 };
 
 export type Note = {
@@ -61,6 +66,7 @@ export type Note = {
   nextSteps: string;
   skills: string[];
   shared: boolean;
+  lessonId?: string; // the calendar lesson this note was written for (notes from before Nov 2026 don't have one)
 };
 
 export type ProgramElement = {
@@ -146,18 +152,73 @@ export type ProgramData = {
   placements: RinkPlacement[];
 };
 
+/**
+ * An optional "I'm available to coach" block on the weekly calendar, e.g. Tuesday 3–6 PM at North Rink.
+ * Coaches don't have to set any: the calendar works fine empty. Coaches who teach at several rinks
+ * add one block per rink, so there's no single "home rink" any more.
+ */
+export type AvailabilityBlock = {
+  id: string;
+  day: number; // 0 = Monday ... 6 = Sunday
+  start: number; // minutes after midnight
+  end: number; // minutes after midnight, after start
+  place?: string; // optional free text, e.g. "North Rink" or "Off-ice studio"
+};
+
 export type Settings = {
   coachName: string;
   email: string;
-  rink: string;
   lessonLength: number;
   reminders: boolean;
   sharedNotes: boolean;
 };
 
-export const TIMES = ["7 AM", "9 AM", "11 AM", "1 PM", "3 PM"];
+// The calendar shows these hours; lessons can start at any minute in between.
+export const FIRST_HOUR = 6; // 6 AM
+export const LAST_HOUR = 22; // 10 PM (the calendar ends here)
+
+/** 570 → "9:30 AM", 780 → "1:00 PM". */
+export function formatTime(minutes: number) {
+  const hour24 = Math.floor(minutes / 60);
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minutes % 60).padStart(2, "0")} ${hour24 < 12 ? "AM" : "PM"}`;
+}
+
+/** 9 → "9 AM", 13 → "1 PM" (for the hour labels down the side of the calendar). */
+export function formatHour(hour24: number) {
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12} ${hour24 < 12 ? "AM" : "PM"}`;
+}
+
+// Before Nov 2026 lessons could only start at 7, 9, 11 AM, 1 or 3 PM and were saved as a `row`
+// (0–4) instead of `start`. This turns those old saved lessons into the new shape so none are lost.
+const OLD_ROW_HOURS = [7, 9, 11, 13, 15];
+// Also fixes lessons saved when the color could be picked separately, so the color always matches the type.
+export function upgradeLesson(lesson: Lesson & { row?: number }): Lesson {
+  const color = colorForType(lesson.type);
+  if (typeof lesson.start === "number") return lesson.color === color ? lesson : { ...lesson, color };
+  const { row, ...rest } = lesson;
+  return { ...rest, color, start: (OLD_ROW_HOURS[row ?? 0] ?? 9) * 60 };
+}
+
+/** The place of the availability block a lesson falls in, if any (e.g. "North Rink"). */
+export function placeFor(lesson: Pick<Lesson, "day" | "start">, blocks: AvailabilityBlock[]) {
+  const block = blocks.find((item) => item.day === lesson.day && item.start <= lesson.start && lesson.start < item.end);
+  return block?.place || undefined;
+}
+
+/** The block already in the way of `block` on the same day, or undefined if there's room. */
+export function findBlockOverlap(block: Pick<AvailabilityBlock, "id" | "day" | "start" | "end">, blocks: AvailabilityBlock[]) {
+  return blocks.find((other) => other.id !== block.id && other.day === block.day && block.start < other.end && other.start < block.end);
+}
 export const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 export const LESSON_TYPES = ["Public", "Freestyle", "Off-ice"];
+
+// Each lesson type has its own color on the calendar (the legend under it): the color isn't picked by hand.
+const TYPE_COLORS: Record<string, LessonColor> = { Freestyle: "teal", Public: "sand", "Off-ice": "purple" };
+export function colorForType(type: string): LessonColor {
+  return TYPE_COLORS[type] ?? "teal";
+}
 export const DURATIONS = ["30 minutes", "45 minutes", "60 minutes"];
 export const OVERALL = ["Strong progress", "Steady", "Tough session", "Breakthrough"];
 export const DISCIPLINE_CATEGORIES: { id: DisciplineCategory; name: string }[] = [
@@ -285,22 +346,22 @@ function daysAgo(days: number) {
 
 // All sample people below are made up.
 export const SAMPLE_STUDENTS: Student[] = [
-  { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], focus: "Double loop", progress: 74, tone: TONES[0] },
-  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], focus: "Flying camel", progress: 61, tone: TONES[1] },
-  { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], focus: "Power pulls", progress: 82, tone: TONES[2] },
-  { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], focus: "Double axel", progress: 57, tone: TONES[3] },
-  { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], focus: "Combination spin", progress: 69, tone: TONES[4] },
-  { id: "s6", name: "Amelia Park", disciplines: [], focus: "Axel", progress: 46, tone: TONES[5] },
+  { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], tone: TONES[0] },
+  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], tone: TONES[1] },
+  { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], tone: TONES[2] },
+  { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], tone: TONES[3] },
+  { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], tone: TONES[4] },
+  { id: "s6", name: "Amelia Park", disciplines: [], tone: TONES[5] },
 ];
 
 export const SAMPLE_LESSONS: Lesson[] = [
-  { id: "l1", studentId: "s3", day: 0, row: 2, type: "Public", duration: 45, color: "sand" },
-  { id: "l2", studentId: "s2", day: 1, row: 1, type: "Freestyle", duration: 60, color: "teal" },
-  { id: "l3", studentId: "s1", day: 2, row: 4, type: "Off-ice", duration: 30, color: "purple" },
-  { id: "l4", studentId: "s1", day: 3, row: 0, type: "Freestyle", duration: 60, color: "teal" },
-  { id: "l5", studentId: "s2", day: 3, row: 3, type: "Freestyle", duration: 45, color: "teal" },
-  { id: "l6", studentId: "s3", day: 4, row: 2, type: "Off-ice", duration: 45, color: "purple" },
-  { id: "l7", studentId: "s1", day: 5, row: 1, type: "Public", duration: 60, color: "sand" },
+  { id: "l1", studentId: "s3", day: 0, start: 660, type: "Public", duration: 45, color: "sand" },
+  { id: "l2", studentId: "s2", day: 1, start: 540, type: "Freestyle", duration: 60, color: "teal" },
+  { id: "l3", studentId: "s1", day: 2, start: 900, type: "Off-ice", duration: 30, color: "purple" },
+  { id: "l4", studentId: "s1", day: 3, start: 420, type: "Freestyle", duration: 60, color: "teal" },
+  { id: "l5", studentId: "s2", day: 3, start: 780, type: "Freestyle", duration: 45, color: "teal" },
+  { id: "l6", studentId: "s3", day: 4, start: 660, type: "Off-ice", duration: 45, color: "purple" },
+  { id: "l7", studentId: "s1", day: 5, start: 540, type: "Public", duration: 60, color: "sand" },
 ];
 
 export const SAMPLE_NOTES: Note[] = [
@@ -313,7 +374,6 @@ export const SAMPLE_NOTES: Note[] = [
 export const SAMPLE_SETTINGS: Settings = {
   coachName: "Mia Carter",
   email: "mia@example.com",
-  rink: "North Rink",
   lessonLength: 45,
   reminders: true,
   sharedNotes: true,
@@ -386,6 +446,126 @@ export const DEFAULT_PROGRAM: ProgramData = {
   placements: [],
 };
 
+/**
+ * The note already written for this lesson on this date, if there is one. A coach who forgot something
+ * reopens that note instead of starting a second one. Older notes have no lessonId, so for those any
+ * note for the same student on the same day counts.
+ */
+export function findLessonNote(notes: Note[], lesson: Pick<Lesson, "id" | "studentId">, date: Date) {
+  const sameDay = notes.filter(
+    (note) => note.studentId === lesson.studentId && new Date(note.date).toDateString() === date.toDateString(),
+  );
+  return sameDay.find((note) => note.lessonId === lesson.id) ?? sameDay.find((note) => !note.lessonId);
+}
+
+/**
+ * After a lesson is edited, moved or resized, the note written for it (that week) follows the change:
+ * new student, type, length, date and time. The title changes too, but only if it's the one the app made up
+ * ("Freestyle lesson"); a title the coach typed is kept. Returns the notes unchanged if there's no note.
+ * `beforeDate`/`afterDate` are when the lesson falls in the week on screen, before and after the change.
+ */
+export function syncLessonNote(notes: Note[], before: Lesson, after: Lesson, beforeDate: Date, afterDate: Date): Note[] {
+  const note = findLessonNote(notes, before, beforeDate);
+  if (!note) return notes;
+  const autoTitle = note.title === `${note.lessonType} lesson`;
+  return notes.map((item) =>
+    item.id === note.id
+      ? {
+          ...item,
+          studentId: after.studentId, // the student is changed on the lesson, never on the note
+          lessonId: after.id,
+          date: afterDate.toISOString(),
+          lessonType: after.type,
+          duration: `${after.duration} minutes`,
+          title: autoTitle ? `${after.type} lesson` : item.title,
+        }
+      : item,
+  );
+}
+
+/** Monday 00:00 of the week `date` is in. */
+export function startOfWeek(date: Date) {
+  const monday = new Date(date);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return monday;
+}
+
+/** Every time a weekly lesson started after `from` and up to `to` (both included only at `to`). */
+export function lessonTimesBetween(lesson: Pick<Lesson, "day" | "start">, from: Date, to: Date): Date[] {
+  const times: Date[] = [];
+  const time = startOfWeek(from);
+  time.setDate(time.getDate() + lesson.day);
+  time.setHours(Math.floor(lesson.start / 60), lesson.start % 60, 0, 0);
+  while (time <= to) {
+    if (time > from) times.push(new Date(time));
+    time.setDate(time.getDate() + 7);
+  }
+  return times;
+}
+
+/** A training-history entry for a lesson that happened: a note with nothing written in it yet. */
+export function emptyLessonNote(lesson: Lesson, date: Date, id: string): Note {
+  return {
+    id,
+    studentId: lesson.studentId,
+    date: date.toISOString(),
+    title: `${lesson.type} lesson`,
+    lessonType: lesson.type,
+    duration: `${lesson.duration} minutes`,
+    overall: "",
+    focus: "",
+    observations: "",
+    nextSteps: "",
+    skills: [],
+    shared: false,
+    lessonId: lesson.id,
+  };
+}
+
+/** True when the coach hasn't written anything in the note yet. */
+export function isEmptyNote(note: Note) {
+  return !note.observations.trim() && !note.focus.trim() && !note.nextSteps.trim() && note.skills.length === 0;
+}
+
+/**
+ * The Lessons tab is the training history: every calendar lesson that has already started gets an
+ * entry, with or without notes. This finds the entries to add for lessons that started after `since`
+ * (the last time we checked) and up to `now`. A lesson's history begins when it was added to the calendar,
+ * and a lesson that already has a note for that day isn't added twice.
+ */
+export function lessonHistoryToAdd(lessons: Lesson[], notes: Note[], since: Date, now: Date, newId: () => string): Note[] {
+  const added: Note[] = [];
+  for (const lesson of lessons) {
+    // History starts on the lesson's start date (or when it was added, for older lessons) and ends on its end date.
+    const begins = lesson.startDate ? fromDateKey(lesson.startDate) : lesson.createdAt ? new Date(lesson.createdAt) : since;
+    const from = begins > since ? begins : since;
+    for (const time of lessonTimesBetween(lesson, from, now)) {
+      if (lesson.endDate && toDateKey(time) > lesson.endDate) break;
+      if (!findLessonNote([...notes, ...added], lesson, time)) added.push(emptyLessonNote(lesson, time, newId()));
+    }
+  }
+  return added;
+}
+
+export type HistoryRange = "This week" | "Last 30 days" | "All";
+export const HISTORY_RANGES: HistoryRange[] = ["This week", "Last 30 days", "All"];
+
+/** Filters for the Lessons tab: student name, how far back, and level (any of the student's disciplines). */
+export function matchesHistoryFilter(
+  note: Note,
+  student: Pick<Student, "name" | "disciplines"> | undefined,
+  filter: { name: string; range: HistoryRange; level: string | null },
+  now: Date,
+) {
+  if (filter.name.trim() && !(student?.name ?? "").toLowerCase().includes(filter.name.trim().toLowerCase())) return false;
+  const date = new Date(note.date);
+  if (filter.range === "This week" && date < startOfWeek(now)) return false;
+  if (filter.range === "Last 30 days" && now.getTime() - date.getTime() > 30 * 24 * 60 * 60 * 1000) return false;
+  if (filter.level && !(student?.disciplines ?? []).some((item) => item.level === filter.level)) return false;
+  return true;
+}
+
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -409,35 +589,37 @@ export function todayIndex() {
 
 export const FULL_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-/** The hour a calendar row starts, e.g. row 3 ("1 PM") → 13. */
-function rowHour(row: number) {
-  const [hour, half] = TIMES[row].split(" ");
-  return (Number(hour) % 12) + (half === "PM" ? 12 : 0);
-}
-
 /**
  * A student's next lesson, worked out from the weekly calendar (the calendar is the source of truth,
  * like NextLessonCalculator in the backend). A lesson that already started today counts as next week's.
  * Returns null when the student has no lessons on the calendar.
  */
 export function findNextLesson(studentId: string, lessons: Lesson[], now = new Date()) {
-  const today = (now.getDay() + 6) % 7;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  let best: { lesson: Lesson; daysAhead: number } | null = null;
-
+  let best: { lesson: Lesson; time: Date } | null = null;
   for (const lesson of lessons) {
     if (lesson.studentId !== studentId) continue;
-    let daysAhead = (lesson.day - today + 7) % 7;
-    if (daysAhead === 0 && rowHour(lesson.row) * 60 < nowMinutes) daysAhead = 7;
-    const sooner = !best || daysAhead < best.daysAhead || (daysAhead === best.daysAhead && lesson.row < best.lesson.row);
-    if (sooner) best = { lesson, daysAhead };
+    const time = nextLessonTime(lesson, now);
+    if (time && (!best || time < best.time)) best = { lesson, time };
   }
   if (!best) return null;
 
-  const { lesson, daysAhead } = best;
+  const { lesson, time } = best;
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const lessonDay = new Date(time);
+  lessonDay.setHours(0, 0, 0, 0);
+  const daysAhead = Math.round((lessonDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
   const day =
-    daysAhead === 0 ? "Today" : daysAhead === 1 ? "Tomorrow" : daysAhead === 7 ? `Next ${FULL_WEEKDAYS[lesson.day]}` : FULL_WEEKDAYS[lesson.day];
-  return { lesson, label: `${day}, ${TIMES[lesson.row].replace(" ", ":00 ")}` };
+    daysAhead === 0
+      ? "Today"
+      : daysAhead === 1
+        ? "Tomorrow"
+        : daysAhead < 7
+          ? FULL_WEEKDAYS[lesson.day]
+          : daysAhead < 14
+            ? `Next ${FULL_WEEKDAYS[lesson.day]}`
+            : time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return { lesson, time, label: `${day}, ${formatTime(lesson.start)}` };
 }
 
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
@@ -451,12 +633,50 @@ export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
  * Two lessons clash when each one starts before the other ends (back-to-back is fine).
  * Same rule as LessonService.checkTimeIsFree in the backend.
  */
-export function findClash(lesson: Pick<Lesson, "id" | "day" | "row" | "duration">, lessons: Lesson[]) {
-  const start = rowHour(lesson.row) * 60;
-  const end = start + lesson.duration;
+export function findClash(
+  lesson: Pick<Lesson, "id" | "day" | "start" | "duration" | "startDate" | "endDate">,
+  lessons: Lesson[],
+) {
+  const end = lesson.start + lesson.duration;
   return lessons.find((other) => {
-    if (other.id === lesson.id || other.day !== lesson.day) return false;
-    const otherStart = rowHour(other.row) * 60;
-    return start < otherStart + other.duration && otherStart < end;
+    if (other.id === lesson.id || other.day !== lesson.day || !datesOverlap(lesson, other)) return false;
+    return lesson.start < other.start + other.duration && other.start < end;
   });
+}
+
+/** Do two weekly lessons ever run in the same week? (A missing start or end means "no limit".) */
+export function datesOverlap(a: Pick<Lesson, "startDate" | "endDate">, b: Pick<Lesson, "startDate" | "endDate">) {
+  // "YYYY-MM-DD" strings sort the same way as the dates they stand for.
+  return (a.startDate ?? "") <= (b.endDate ?? "9999") && (b.startDate ?? "") <= (a.endDate ?? "9999");
+}
+
+/** A day as "2026-11-12" (local time), the format startDate and endDate use. */
+export function toDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** "2026-11-12" → midnight that day, local time. */
+export function fromDateKey(key: string) {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/** Is the weekly lesson running on this calendar day (between its start and end dates)? */
+export function isLessonActiveOn(lesson: Pick<Lesson, "startDate" | "endDate">, date: Date) {
+  const key = toDateKey(date);
+  return (!lesson.startDate || key >= lesson.startDate) && (!lesson.endDate || key <= lesson.endDate);
+}
+
+/** When the lesson next starts at or after `now`, or null if it has ended. */
+export function nextLessonTime(lesson: Pick<Lesson, "day" | "start" | "startDate" | "endDate">, now = new Date()) {
+  const time = startOfWeek(now);
+  time.setDate(time.getDate() + lesson.day);
+  time.setHours(Math.floor(lesson.start / 60), lesson.start % 60, 0, 0);
+  if (time < now) time.setDate(time.getDate() + 7); // already started this week, so next week's
+  if (lesson.startDate) {
+    const first = fromDateKey(lesson.startDate);
+    while (time < first) time.setDate(time.getDate() + 7);
+  }
+  if (lesson.endDate && toDateKey(time) > lesson.endDate) return null;
+  return time;
 }

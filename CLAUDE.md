@@ -1,93 +1,108 @@
 # CLAUDE.md
 
-SkatePod is a coach-first app for figure skating coaches (student list, lesson notes, practice checklist, links to Drive/music/competition files). It's an early personal project. Product vision, MVP scope and the roadmap are in [README.md](README.md).
+SkatePod is a coach-first iPhone app for figure skating coaches: students, a weekly lesson calendar, a lesson history with notes, and program layouts. It's Han's early personal project, used to learn product management (Jira, Confluence) and coding. Vision, MVP scope and roadmap are in [README.md](README.md).
+
+**Keep this file current.** After any major change (new screen, model or storage change, new rule, new command, new working agreement), update the matching section here in the same commit. Keep it short: rules and pointers, not history.
+
+## Working rules (from Han)
+
+- **Don't open, launch or drive the iOS Simulator** unless Han says so in that conversation. Check changes from the CLI (`npx tsc --noEmit`, `npm test`, `./mvnw test`) and tell Han what to try on the phone.
+- Commit or push only when asked. Work on a feature branch, never on `main`. Don't stage `mobile/package-lock.json` drift, the root `package.json`/`package-lock.json`, `design/` or `research/` unless asked.
+- Jira (project SKATE, board 2) and Confluence hold the epics, stories and research. Commit messages and stories reference SKATE keys when there is one.
 
 ## Repo layout
 
 | Folder | What it is |
 | --- | --- |
-| `mobile/` | iPhone app: Expo, React Native and TypeScript. Runs in Expo Go. |
+| `mobile/` | The app: Expo, React Native 0.86, TypeScript. Runs in Expo Go (no `ios/` folder, so no `xcodebuild`). |
 | `backend/` | REST API: Spring Boot 4.1, Java 21, JPA, Flyway, PostgreSQL 17, Maven. |
-| `prototype/figma-make/` | Original Figma Make web prototype (React, Vite, Tailwind). Design reference only, don't change it. |
+| `prototype/figma-make/` | Original Figma Make web prototype. Design reference only, don't change it. |
+| `docs/media/` | Demo GIF used in the README. |
+| `.github/workflows/ci.yml` | CI on every push and PR: mobile `npm ci`, `tsc`, `npm test` (Node 22); backend `./mvnw -B test` (Java 21). |
 
-**The app and the backend aren't connected yet.** The mobile app keeps its own sample data on the phone (AsyncStorage). Their data models also differ (see below).
+**The app and the backend aren't connected yet.** The app keeps its own data on the phone (AsyncStorage), and the models differ (see "Model gaps").
 
 ## Commands
 
-Step-by-step start-up notes for Han are in [RUNNING.md](RUNNING.md). Keep it in sync with this section.
-
-Database: a native **Homebrew PostgreSQL 17**, not Docker. `backend/compose.yaml` is no longer used.
+Han's step-by-step start-up notes are in [RUNNING.md](RUNNING.md); keep it in sync with this section.
 
 ```bash
-brew services start postgresql@17      # starts on login; check with `pg_isready -h localhost`
-brew services stop postgresql@17
-dropdb skatepod && createdb -O skatepod skatepod   # wipe the DB; the next backend start reloads sample data
+# Database: Homebrew PostgreSQL 17 (not Docker; backend/compose.yaml is unused). DB, user and password are all `skatepod` on localhost:5432.
+brew services start postgresql@17                 # check with `pg_isready -h localhost`
+dropdb skatepod && createdb -O skatepod skatepod  # wipe; the next backend start reloads sample data
+
+# Backend (from backend/, needs PostgreSQL)
+./mvnw spring-boot:run                            # http://localhost:8080/api, dev profile with sample data
+./mvnw test                                       # or -Dtest=ClassName / -Dtest=ClassName#method
+
+# Mobile (from mobile/)
+sh setup.sh                                       # one time
+npx expo start                                    # scan the QR code with Expo Go (--tunnel if needed)
+npx tsc --noEmit                                  # type check (no linter)
+npm test                                          # unit tests: src/**/*.test.ts with Node's built-in runner
 ```
 
-The connection is `localhost:5432`, and the database, user and password are all `skatepod`. These match the defaults in `application.yaml`. One-time setup on a new Mac: `brew install postgresql@17`, then `CREATE ROLE skatepod WITH LOGIN PASSWORD 'skatepod'` and `CREATE DATABASE skatepod OWNER skatepod` through `psql postgres`.
+`backend/requests.http` has ready-made API requests.
 
-Backend (run from `backend/`; needs PostgreSQL running):
+## Mobile app
 
-```bash
-./mvnw spring-boot:run        # API on http://localhost:8080/api, dev profile (loads sample data)
-./mvnw test                   # all tests
-./mvnw test -Dtest=NextLessonCalculatorTest            # one class
-./mvnw test -Dtest=StudentServiceTest#createTrimsInputAndTreatsBlankFocusAsEmpty  # one method
-```
+**Shell and navigation.** `App.tsx` holds the header, "Add" button, bottom tabs (Dashboard, Students, Calendar, Programs, Lessons, Settings) and switches screens with `useState`; no navigation library. Cross-screen requests go through `navigate(tab, intent)` with a one-time `Intent` from `src/navigation.ts` (`add`, `openStudent`, `newNote`, `openNote`, `filterNotes`); the target screen acts on it, then calls `onIntentHandled()`. Notes opened from another screen go back there on close (`returnTo`).
 
-`backend/requests.http` has ready-made requests for VS Code REST Client or IntelliJ.
+**State.** `src/store.tsx` (`useStore()`) holds everything, each saved with `usePersistentState` (`src/storage.ts`) under AsyncStorage keys `skatepod.students.v2`, `.lessons.v1`, `.notes.v1`, `.programs.v1`, `.settings.v1`, `.availability.v1`, `.historyCheckedAt.v1`. If a stored shape changes, bump the key or upgrade old data on load (lessons use `upgradeLesson`).
 
-Mobile (run from `mobile/`):
+**Where things live.**
+- `src/data.ts`: types, sample data, catalogs and **all business rules as plain functions** (so they're testable). Tests are in `src/data.test.ts`.
+- `src/theme.ts`: colors, `lessonColors`, `categoryColors`, radius, shadow. Styling is inline style objects with these tokens.
+- `src/components/ui.tsx`: `Screen`, `Card`, `Button`, `Field`, `Sheet`, `Chips`, `Dropdown`, `DisciplineBadges`, etc. Icons in `Icon.tsx`.
+- Screens in `src/screens/`: `DashboardScreen`, `StudentsScreen`, `CalendarScreen`, `ProgramsScreen`, `LessonsScreen`, `SettingsScreen`.
 
-```bash
-sh setup.sh                   # one time: installs expo@latest, then `npx expo install` matching versions
-npx expo start                # front end: scan the QR code with Expo Go (add --tunnel if the phone can't connect)
-npx tsc --noEmit              # type check (there's no test runner or linter)
-```
+**iOS limits.** A pop-up can't open over a `Sheet`, so `Dropdown` and the native date/time wheels (`@react-native-community/datetimepicker`) open inline. Use `Dropdown` for any fixed-list value (disciplines, levels, tracks, student pickers), never free text.
 
-## Backend architecture
+**Students.** First name or initials, plus disciplines (each a discipline and a level from `DISCIPLINES`). No `focus` or `progress` (removed Nov 2026). The next lesson is computed, never stored (`findNextLesson`, `nextLessonLabel`).
+
+**Calendar (weekly lessons).**
+- `Lesson`: `day` (0 = Monday), `start` (minutes after midnight, any minute; 570 = 9:30 AM), `duration`, `type`, `color`, `createdAt?`, `startDate?`, `endDate?` (calendar days "YYYY-MM-DD").
+- Lessons repeat weekly from `startDate` (today at the earliest for new ones) to an optional `endDate`. Lessons without dates count as always on. `isLessonActiveOn`, `nextLessonTime` and `findClash` respect the dates.
+- Color follows type (`colorForType`): Freestyle = teal, Public = sand, Off-ice = purple. No color field in the editor.
+- Grid 6 AM–10 PM. Tap an empty spot to add, drag to move, drag the bottom edge to resize (snap to 15 min). Tapping a lesson opens a bottom preview panel (max one third of the screen) that stays open after editing. In the editor, start, end and duration stay in sync. "Today" scrolls to today's column.
+- Optional availability blocks (`AvailabilityBlock`: day, start, end, optional place) are shaded on the grid; a lesson inside one shows its place (`placeFor`). Blocks on one day can't overlap (`findBlockOverlap`). There's no rink preset or home rink.
+
+**Lessons tab (training history).** Each lesson occurrence gets a `Note` (possibly empty) once it starts: `lessonHistoryToAdd` fills in what's missing since `historyCheckedAt`, run by the store on load and every minute. Deleted entries don't come back. A lesson's note (`lessonId`) shows the lesson's student, type, length and time read-only; `syncLessonNote` updates it when the lesson changes, and opening a lesson's note reuses the existing one (`findLessonNote`). "Add a past lesson" makes a note with a past date and no `lessonId`. Filters by student, level and time (`matchesHistoryFilter`, `HISTORY_RANGES`), plus Select mode to share or delete several.
+
+**Programs.** Elements per student, with Edit mode and drag to reorder. Track and level come from `TRACK_LEVELS` (2026-27: Championship, Excel, Adult); `validTrackAndLevel` checks a pair. `requirementLinks` links to official U.S. Figure Skating charts; link to the rules, don't copy or enforce them. When charts change, update the URLs and `REQUIREMENTS_CHECKED`.
+
+**Tests.** `src/*.test.ts` use `node:test` and `node:assert/strict`, import with the `.ts` extension, and can only import files without React Native imports (like `data.ts`). Add a test for every new rule in `data.ts`.
+
+## Backend
 
 Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 
-- **Layering:** Controller (HTTP and `@Valid`) → Service (business rules, `@Transactional`, entity ↔ DTO mapping) → Spring Data repository. Entities never leave the service layer. Controllers only return DTO records from `dto/`.
-- **Entities** extend `common/BaseEntity` (UUID id plus `created_at`/`updated_at` set in `@PrePersist`/`@PreUpdate`). They have a protected no-arg constructor for JPA, and a public constructor that delegates to an `update(...)` method. There are no setters.
-- **Services trim strings**, and `StudentService.blankToNull` turns a blank optional field into null.
-- **Errors:** throw `NotFoundException("Student", id)` for a 404, `BadRequestException("message")` for a broken business rule (400), or `ConflictException("message")` when a request clashes with saved data (409). `ApiExceptionHandler` turns each into a `ProblemDetail`. Validation errors become 400 problem details automatically (`spring.mvc.problemdetails.enabled`).
-- **Time:** inject the `Clock` bean (`common/ClockConfig`) and use `LocalDateTime.now(clock)`, never a bare `now()`. Tests use `Clock.fixed(...)`.
-- **Next lesson:** `StudentService.toResponse` calls `NextLessonCalculator.findNext(lessons, now)`, which returns the earliest lesson starting at or after `now` (lessons that already started today are skipped). `list()` loads all lessons in one query and groups them by student to avoid N+1 queries.
-- **Student disciplines:** a student has zero or more `StudentDiscipline`s (`@ElementCollection`, table `student_disciplines`, one row per student and discipline). Each one is a `Discipline` enum value plus a level. The catalog (`DisciplineCategory` > `Discipline` > ordered levels) lives in code in `student/Discipline.java`, not in DB tables, and is served at `GET /api/disciplines`. `StudentService.toDisciplines` rejects a level from another discipline and duplicate disciplines with `BadRequestException` (400). **The catalog is copied in `mobile/src/data.ts` (`DISCIPLINES`). Change both together.**
-- **Lesson types:** only `Public`, `Freestyle` and `Off-ice` are allowed. The rule lives in three places: `@Pattern` in `LessonRequest`, the CHECK constraint from migration V3, and `LESSON_TYPES` in `mobile/src/data.ts`. Change all three together.
-- **No double booking:** a lesson can't overlap any other lesson on the same day, for any student (the coach teaches one at a time). Back-to-back is fine. `LessonService.checkTimeIsFree` throws `ConflictException` (409). The app has the same rule in `findClash` (`mobile/src/data.ts`), and `CalendarScreen` blocks saving with an alert. Change both together.
-- **Lesson colors:** the `LessonColor` enum (`TEAL`, `SAND`, `PURPLE`) is stored as a string. Mobile uses the same names in lowercase. The calendar legend reads teal = Freestyle, sand = Public, purple = Off-ice.
+- **Layers:** Controller (HTTP, `@Valid`, returns DTO records from `dto/`) → Service (rules, `@Transactional`, entity ↔ DTO, trims strings, `blankToNull`) → Spring Data repository. Entities never leave the service.
+- **Entities** extend `common/BaseEntity` (UUID, `created_at`/`updated_at`), have a protected no-arg constructor plus a public one that calls `update(...)`, and no setters.
+- **Errors:** `NotFoundException` (404), `BadRequestException` (400), `ConflictException` (409), turned into `ProblemDetail` by `ApiExceptionHandler`.
+- **Time:** inject the `Clock` bean and use `now(clock)`; tests use `Clock.fixed(...)`.
+- **Disciplines:** catalog in code (`student/Discipline.java`), served at `GET /api/disciplines`; stored per student in `student_disciplines`.
+- **Database:** Flyway owns the schema (`ddl-auto: validate`). Never edit an applied migration; add the next `V5__...sql`. Sample data `db/sample/V1000__sample_data.sql` loads only in the `dev` profile; after adding a migration, reset the dev DB (it sorts before V1000). Deleting a student cascades to their lessons. Production config: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `PORT`.
+- **Tests:** plain JUnit 5 + AssertJ + Mockito with mocked repositories, no Spring context or DB. Descriptive names or `@DisplayName`.
 
-### Database
+## Rules that live in two or more places (change together)
 
-- Flyway owns the schema. `ddl-auto: validate` means the app won't start if an entity and the schema disagree.
-- **Never edit an applied migration.** Add `V3__...sql` and so on to `src/main/resources/db/migration/`.
-- `db/sample/V1000__sample_data.sql` is loaded only by the `dev` profile, and `spring-boot:run` turns that profile on through `pom.xml`. Sample dates are relative to `CURRENT_DATE`.
-- Because the sample data is V1000, a new schema migration (V3, V4, and so on) sorts before it. Flyway then refuses to start on a dev DB that already has V1000. Reset the dev DB (`dropdb skatepod && createdb -O skatepod skatepod`) after adding one. If the new migration adds a rule the sample data breaks, also update `V1000__sample_data.sql`, which only runs on a fresh DB.
-- `lessons.student_id` uses `ON DELETE CASCADE`, so deleting a student deletes their lessons.
-- Lessons are dated calendar entries (`lesson_date` plus `start_time`), not weekly slots. V2 migrated away from `day_of_week`.
-- Production config comes from `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD` and `PORT`.
+| Rule | Backend | Mobile (`data.ts`) |
+| --- | --- | --- |
+| Discipline catalog | `student/Discipline.java` | `DISCIPLINES` |
+| Lesson types: Public, Freestyle, Off-ice | `@Pattern` in `LessonRequest` + CHECK in migration V3 | `LESSON_TYPES` |
+| No double booking (overlap blocked, back-to-back fine, any student) | `LessonService.checkTimeIsFree` (409) | `findClash` (also checks date ranges; `CalendarScreen` alerts) |
+| Next lesson = earliest start at or after now | `NextLessonCalculator.findNext` | `findNextLesson` / `nextLessonTime` |
+| Lesson colors TEAL / SAND / PURPLE | `LessonColor` enum | lowercase names, `colorForType` |
 
-### Tests
+## Model gaps (for when the app connects to the backend)
 
-These are plain JUnit 5 unit tests with AssertJ and Mockito (`@ExtendWith(MockitoExtension.class)`, repositories mocked). They don't use a Spring context or a database. Follow that style for new tests, and give them descriptive method names or `@DisplayName`.
+- Backend lessons are dated one-offs (`lesson_date` + `start_time`); mobile lessons are weekly with optional start/end dates.
+- The backend student still has a `focus` column; mobile students don't.
+- Mobile-only so far: notes/lesson history, programs, availability blocks, settings.
 
-## Mobile architecture
+## Conventions
 
-- `App.tsx` contains the whole shell: header, "Add" button, bottom tabs, and screen switching through `useState`. There's no navigation library.
-- Cross-screen navigation goes through `navigate(tab, intent)`. An `Intent` (`src/navigation.ts`) is a one-time request such as `{ kind: "openStudent", studentId }`. The target screen acts on it and then calls `onIntentHandled()`.
-- `src/store.tsx` is a React context (`useStore()`) that holds students, lessons, notes, programs and settings. Each one is saved with `usePersistentState` (`src/storage.ts`, AsyncStorage keys `skatepod.*.v1`). If you change a stored type's shape, bump the key version or handle old data.
-- `src/data.ts` holds types, sample data and the skating element catalog. `src/theme.ts` holds colors, `lessonColors`, radius and shadow. Shared UI pieces (`Screen`, `Card`, `Button`, `Field`, `Sheet`, `Chips` and so on) are in `src/components/ui.tsx`, and icons are in `Icon.tsx`.
-- Use `Dropdown` (in `ui.tsx`) for any value the API only accepts from a fixed list. It opens its options inline, because a pop-up can't open on top of a `Sheet` on iOS. Student disciplines and levels use it, with no free text. `DisciplineBadges` shows a student's disciplines as pills colored by `categoryColors` in `theme.ts`.
-- **Requirement links:** `requirementLinks` in `data.ts` links the Programs screen to official U.S. Figure Skating charts for the student's track and level. Link to the rules, don't copy them or enforce element limits, because they change by season and have exceptions. When charts change, update the URLs and `REQUIREMENTS_CHECKED`.
-- Styling uses inline style objects and `theme.ts` tokens. There's no styling library.
-- **Model mismatch with the backend:** the mobile `Lesson` is still a weekly slot (`day` 0 = Monday, `row` = index into `TIMES`). The backend uses dated lessons. Both work out the next lesson from the calendar and never store it: `findNextLesson`/`nextLessonLabel` in `data.ts` mirror `NextLessonCalculator`, and the student editor shows it read-only. Keep this in mind when connecting the two.
-
-## Conventions and context
-
-- **Privacy:** many skaters are minors. Keep student data minimal (first names or initials), and don't add student accounts or extra personal fields without asking.
-- The code is commented in a plain, explanatory style for a developer who is learning (some comments address Han directly). Keep new comments in that tone and at a similar density.
-- READMEs are written in plain language with step-by-step Mac instructions. Update `README.md`, `backend/README.md` or `mobile/README.md` when commands, endpoints or the roadmap change.
-- All student, lesson and note data is made up. Keep it that way.
+- **Privacy:** many skaters are minors. Keep student data minimal (first names or initials); no student accounts or extra personal fields without asking. All sample data is made up; keep it that way.
+- Comments are plain and explanatory for a developer who is learning (some address Han directly). Match that tone and density.
+- READMEs (`README.md`, `mobile/README.md`, `backend/README.md`) are plain-language, step-by-step for a Mac. Update them when commands, endpoints, screens or the roadmap change.

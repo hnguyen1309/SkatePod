@@ -14,7 +14,6 @@ import {
   Heading,
   IconButton,
   Label,
-  ProgressBar,
   Screen,
   SearchBar,
   Sheet,
@@ -30,6 +29,7 @@ import {
   initialsOf,
   nextLessonLabel,
   newId,
+  placeFor,
   sortDisciplines,
   type DisciplineCategory,
   type DisciplineId,
@@ -44,7 +44,7 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, setStudents, lessons, notes, programs, settings } = useStore();
+  const { students, setStudents, lessons, availability, notes, programs } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -129,14 +129,8 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
                 </Text>
                 <DisciplineBadges disciplines={student.disciplines} />
                 <Text numberOfLines={1} style={{ fontSize: 12, color: colors.subtle, fontWeight: "600" }}>
-                  {student.focus} · {nextLessonLabel(student.id, lessons)}
+                  {nextLessonLabel(student.id, lessons)}
                 </Text>
-              </View>
-              <View style={{ width: 56, alignItems: "flex-end", gap: 4 }}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: colors.subtle }}>{student.progress}%</Text>
-                <View style={{ width: 56 }}>
-                  <ProgressBar percent={student.progress} />
-                </View>
               </View>
             </Pressable>
           ))
@@ -160,30 +154,30 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
               </View>
             </View>
             <Label>Training snapshot</Label>
-            <DetailRow label="Current focus" value={detail.focus} />
             <DetailRow label="Weekly lessons" value={String(lessons.filter((lesson) => lesson.studentId === detail.id).length)} />
             <DetailRow label="Lesson notes" value={String(notes.filter((note) => note.studentId === detail.id).length)} />
-            <DetailRow label="Practice completion" value={`${detail.progress}%`} />
             <DetailRow label="Program" value={programs[detail.id]?.musicTitle ?? "Not started"} />
             <View style={{ height: 1, backgroundColor: colors.borderSoft, marginVertical: 16 }} />
             <Label>Next lesson</Label>
             <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 18 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#355e64" }}>{detailNext?.label ?? "Not scheduled"}</Text>
               <Text style={{ fontSize: 12, color: "#728387", marginTop: 3 }}>
-                {detailNext ? `${detailNext.lesson.type} · ${detailNext.lesson.duration} minutes · ${settings.rink}` : "Add a lesson on the Calendar tab"}
+                {detailNext
+                  ? [detailNext.lesson.type, `${detailNext.lesson.duration} minutes`, placeFor(detailNext.lesson, availability)].filter(Boolean).join(" · ")
+                  : "Add a lesson on the Calendar tab"}
               </Text>
             </View>
             <View style={{ gap: 10 }}>
               <Button
                 icon="notes"
                 label="View notes"
-                onPress={() => closeDetailThen(() => navigate("Notes", { kind: "filterNotes", studentId: detail.id }))}
+                onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "filterNotes", studentId: detail.id }))}
                 variant="secondary"
               />
               <Button
                 icon="plus"
                 label="New lesson note"
-                onPress={() => closeDetailThen(() => navigate("Notes", { kind: "newNote", studentId: detail.id }))}
+                onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "newNote", studentId: detail.id }))}
                 variant="secondary"
               />
               <Button label="Edit profile" onPress={() => closeDetailThen(() => setEditor({ mode: "edit", student: detail }))} />
@@ -223,8 +217,6 @@ function StudentEditor({
 }) {
   const [name, setName] = useState(student?.name ?? "");
   const [disciplines, setDisciplines] = useState<StudentDiscipline[]>(sortDisciplines(student?.disciplines ?? []));
-  const [focus, setFocus] = useState(student?.focus ?? "");
-  const [progress, setProgress] = useState(student?.progress ?? 50);
 
   // Only disciplines the student doesn't have yet can be added.
   const addable = DISCIPLINES.filter((info) => !disciplines.some((item) => item.discipline === info.id)).map((info) => info.id);
@@ -251,8 +243,6 @@ function StudentEditor({
       id: student?.id ?? newId(),
       name: name.trim(),
       disciplines,
-      focus: focus.trim() || "—",
-      progress,
       tone: student?.tone ?? TONES[toneIndex % TONES.length],
     });
   }
@@ -308,15 +298,6 @@ function StudentEditor({
       <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6, marginBottom: 16 }}>
         From your calendar. Schedule or delete lessons on the Calendar tab to change it.
       </Text>
-      <Field label="Current focus" onChangeText={setFocus} placeholder="e.g. Axel entrance" value={focus} />
-      <Label>Progress: {progress}%</Label>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <Stepper icon="down" label="Decrease progress" onPress={() => setProgress((value) => Math.max(0, value - 5))} />
-        <View style={{ flex: 1 }}>
-          <ProgressBar percent={progress} />
-        </View>
-        <Stepper icon="up" label="Increase progress" onPress={() => setProgress((value) => Math.min(100, value + 5))} />
-      </View>
     </Sheet>
   );
 }
@@ -343,18 +324,3 @@ const styles = StyleSheet.create({
   },
 });
 
-function Stepper({ icon, label, onPress }: { icon: "up" | "down"; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => [
-        { width: 40, height: 40, borderRadius: radius.md, borderWidth: 1, borderColor: colors.input, alignItems: "center", justifyContent: "center" },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      <Icon color={colors.subtle} name={icon === "up" ? "plus" : "minus"} size={16} />
-    </Pressable>
-  );
-}

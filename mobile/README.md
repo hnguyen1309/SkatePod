@@ -10,7 +10,7 @@ The iPhone version of the Figma Make prototype, built with Expo (React Native + 
 | **Students** | Search and filter by discipline category, view a student’s snapshot, add, edit or delete students. Each student can have several disciplines (Learn to Skate, Freeskate, Skills, Pattern Dance…), each with its own level picked from a dropdown. |
 | **Calendar** | Weekly schedule in Week or Day view, add or delete lessons, jump to notes. A lesson can’t be booked over another one (the app tells you whose lesson is in the way). |
 | **Programs** | Pick track and level, build a program components sheet, draw the skating path on a rink with your finger and place elements |
-| **Notes** | Lesson notes (newest first), search, write and share notes, skills, next steps |
+| **Lessons** | Training history: every calendar lesson shows up once it starts, with or without notes. Add a past lesson with its note. Filter by student, time and level; select several to share or delete; write notes, skills and next steps |
 | **Settings** (gear icon) | Coach profile, default lesson length, sharing default, export a backup, reset sample data |
 
 Data is saved on the phone only. Every student and note in it is made-up sample data.
@@ -31,6 +31,14 @@ npx expo start
 4. Scan the QR code with your iPhone camera. It opens SkatePod in Expo Go.
 
 Your Mac and iPhone need to be on the same Wi-Fi. If they can’t see each other, run `npx expo start --tunnel`.
+
+## Run the tests
+
+```bash
+npm test
+```
+
+This runs the unit tests in `src/*.test.ts` (for example `src/data.test.ts`) with Node's built-in test runner. They check the app's rules without opening the app, and GitHub runs them on every push too.
 
 ## Why a setup script?
 

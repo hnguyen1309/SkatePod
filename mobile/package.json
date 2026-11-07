@@ -7,10 +7,12 @@
     "setup": "sh ./setup.sh",
     "start": "expo start",
     "ios": "expo start --ios",
-    "android": "expo start --android"
+    "android": "expo start --android",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "9.1.0",
     "@types/react": "~19.2.4",
     "expo": "^57.0.31",
     "expo-status-bar": "~57.0.1",

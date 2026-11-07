@@ -6,7 +6,7 @@ import { Icon, type IconName } from "./src/components/Icon";
 import type { Intent, ScreenProps, Tab } from "./src/navigation";
 import { CalendarScreen } from "./src/screens/CalendarScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
-import { NotesScreen } from "./src/screens/NotesScreen";
+import { LessonsScreen } from "./src/screens/LessonsScreen";
 import { ProgramsScreen } from "./src/screens/ProgramsScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { StudentsScreen } from "./src/screens/StudentsScreen";
@@ -18,7 +18,7 @@ const TABS: { tab: Tab; icon: IconName; label: string }[] = [
   { tab: "Students", icon: "students", label: "Students" },
   { tab: "Calendar", icon: "calendar", label: "Calendar" },
   { tab: "Programs", icon: "music", label: "Programs" },
-  { tab: "Notes", icon: "notes", label: "Notes" },
+  { tab: "Lessons", icon: "notes", label: "Lessons" },
 ];
 
 const ADD_LABELS: Partial<Record<Tab, string>> = {
@@ -26,7 +26,7 @@ const ADD_LABELS: Partial<Record<Tab, string>> = {
   Students: "Add student",
   Calendar: "Add lesson",
   Programs: "New program",
-  Notes: "New note",
+  Lessons: "Past lesson",
 };
 
 export default function App() {
@@ -120,7 +120,7 @@ function Shell() {
         {tab === "Students" ? <StudentsScreen {...props} /> : null}
         {tab === "Calendar" ? <CalendarScreen {...props} /> : null}
         {tab === "Programs" ? <ProgramsScreen {...props} /> : null}
-        {tab === "Notes" ? <NotesScreen {...props} /> : null}
+        {tab === "Lessons" ? <LessonsScreen {...props} /> : null}
         {tab === "Settings" ? <SettingsScreen {...props} /> : null}
       </View>
 
