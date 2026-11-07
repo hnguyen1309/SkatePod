@@ -23,6 +23,7 @@ What the first runs of the Maestro UI suite (`mobile/.maestro`, run with `sh run
 - **Steps:** Type observations, then tap the X at the top instead of Save note.
 - **What happens:** The sheet closes and the text is gone. There's no "Discard changes?" question and no Cancel button, so X looks like "done".
 - **Code:** `LessonsScreen.tsx` `closeEditor` (found reading the code while writing the test; worth a quick check on the phone).
+- **Fixed (branch `fix/SKATE-84-discard-note-changes`):** the X now asks "Discard changes?" with Cancel and Discard when something changed (`noteHasChanges` in `data.ts`); with no changes it closes straight away. Covered in `06-lessons-history.yaml`.
 
 ### 4. "New program" doesn't start a new program (SKATE-85)
 - **Where:** Programs → New program (header button).

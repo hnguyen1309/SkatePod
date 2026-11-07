@@ -14,6 +14,7 @@ import {
   nextLessonTime,
   isEmptyNote,
   lessonHistoryToAdd,
+  noteHasChanges,
   matchesHistoryFilter,
   syncLessonNote,
   unavailableStretches,
@@ -154,6 +155,29 @@ describe("lessonHistoryToAdd: every lesson that happened shows up in the Lessons
       added.map((item) => new Date(item.date).getDate()),
       [5, 12, 19],
     );
+  });
+});
+
+describe("noteHasChanges: closing a note with the X asks first only if something changed", () => {
+  test("a note that wasn't touched has no changes", () => {
+    assert.equal(noteHasChanges(note(), note()), false);
+  });
+
+  test("typing in a text box is a change", () => {
+    assert.equal(noteHasChanges(note(), note({ observations: "Draft lesson note, better edges" })), true);
+  });
+
+  test("adding or removing a skill is a change", () => {
+    assert.equal(noteHasChanges(note(), note({ skills: ["Layback"] })), true);
+    assert.equal(noteHasChanges(note({ skills: ["Layback"] }), note()), true);
+  });
+
+  test("the same skills in a new copy of the list are not a change", () => {
+    assert.equal(noteHasChanges(note({ skills: ["Layback", "Axel"] }), note({ skills: ["Layback", "Axel"] })), false);
+  });
+
+  test("flipping the shared switch is a change", () => {
+    assert.equal(noteHasChanges(note(), note({ shared: false })), true);
   });
 });
 

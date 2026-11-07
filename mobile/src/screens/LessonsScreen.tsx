@@ -13,6 +13,7 @@ import {
   isEmptyNote,
   matchesHistoryFilter,
   newId,
+  noteHasChanges,
   type HistoryRange,
   type Note,
 } from "../data";
@@ -333,6 +334,20 @@ function NoteEditor({
     Share.share({ message: lines.join("\n") }).catch(() => {});
   }
 
+  // The X (and swiping the sheet down) closes without saving. If the coach changed anything,
+  // including a skill typed in the box but not added yet, ask first so typed notes aren't lost by accident.
+  // Cancel keeps the editor open with everything as it was; Discard closes it and drops the changes.
+  function closeWithoutSaving() {
+    if (!noteHasChanges(note, draft) && !newSkill.trim()) {
+      onClose();
+      return;
+    }
+    Alert.alert("Discard changes?", "What you changed in this note won't be saved.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Discard", style: "destructive", onPress: onClose },
+    ]);
+  }
+
   return (
     <Sheet
       footer={
@@ -342,7 +357,7 @@ function NoteEditor({
           <Button label="Save note" onPress={() => onSave(draft)} style={{ flex: 1.3 }} />
         </>
       }
-      onClose={onClose}
+      onClose={closeWithoutSaving}
       title={isNew ? (fromLesson ? "New lesson note" : "Add past lesson") : studentName}
       visible
     >
