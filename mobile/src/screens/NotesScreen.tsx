@@ -217,9 +217,6 @@ function NoteEditor({
           <Text style={{ fontSize: 13, color: colors.body, marginTop: 3 }}>
             {draft.lessonType} · {draft.duration}
           </Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
-            To change the student, time, type or length, edit the lesson on the Calendar.
-          </Text>
         </View>
       ) : (
         <>

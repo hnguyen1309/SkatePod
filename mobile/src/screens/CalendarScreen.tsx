@@ -346,8 +346,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           onClose={() => setEditingId(null)}
           onSave={(lesson) => {
             saveLesson(editing, lesson);
-            setEditingId(null);
-            setDetailId(lesson.id); // back to the details, showing the changes
+            setEditingId(null); // saved: close the editor and go straight back to the calendar
           }}
           students={students.map((student) => ({ id: student.id, name: student.name }))}
         />
