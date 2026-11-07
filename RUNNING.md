@@ -71,6 +71,8 @@ Stop it with **Ctrl+C**.
 
 The app doesn't call the backend yet. It uses sample data saved on the phone.
 
+UI tests (Maestro, on the iOS Simulator): with `npx expo start` running and the app open in the Simulator (press **i**), run `sh run-ui-tests.sh` from `mobile/` in a second terminal. It resets the app to sample data. Setup steps are in `mobile/README.md`.
+
 ## Seeing the database
 
 In VS Code, open the **PostgreSQL** (elephant) icon in the sidebar and use the connection details above. The tables are under

@@ -1,0 +1,48 @@
+# Calendar availability blocks: add one with a place, block overlaps, show the place on a lesson, delete.
+appId: host.exp.Exponent
+name: Calendar availability blocks
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Calendar"
+
+- tapOn: "Set availability (optional)"
+- assertVisible: "Availability"
+- assertVisible: "Add a block"
+# Default block is 3:00 PM–6:00 PM on today's weekday; put it on Wednesday with a place.
+- tapOn: "WED"
+- tapOn:
+    text: "Place \\(optional\\)"
+    index: 1
+- inputText: "North Rink"
+- pressKey: Enter
+- tapOn: "Add block"
+- assertVisible: "Wednesday · 3:00 PM–6:00 PM"
+- assertVisible: "North Rink"
+
+# The same times again overlap and are refused.
+- tapOn: "WED"
+- tapOn: "Add block"
+- assertVisible: "That overlaps another block"
+- tapOn: "OK"
+- tapOn: "Done"
+- assertVisible: "Availability \\(1\\)"
+
+# Emma's sample Wednesday lesson at 3:00 PM sits inside the block, so its preview shows the place.
+- tapOn: "Day"
+- tapOn: "WED.*"
+- scrollUntilVisible:
+    element: ".*Emma.*"
+- tapOn: ".*Emma.*"
+- assertVisible: "North Rink"
+- tapOn: "Close preview"
+
+# Delete the block.
+- scrollUntilVisible:
+    element: "Availability \\(1\\)"
+    direction: UP
+- tapOn: "Availability \\(1\\)"
+- tapOn: "Delete block"
+- assertNotVisible: "Wednesday · 3:00 PM–6:00 PM"
+- tapOn: "Done"
+- assertVisible: "Set availability \\(optional\\)"

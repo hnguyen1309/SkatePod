@@ -1,0 +1,65 @@
+# Lessons tab: add a past lesson with notes, open and edit it, filter, select and delete.
+appId: host.exp.Exponent
+name: Lessons history
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Lessons"
+- assertVisible: "Training history"
+- assertVisible: "\\d+ lessons?"
+
+# Add a past lesson for Sofia with a focus, an observation and a skill.
+- tapOn: "Add a past lesson"
+- assertVisible: "Add past lesson"
+- assertVisible: "When"
+- tapOn: "Sofia Chen"
+# Fields below the fold sit under the footer buttons, so scroll before tapping.
+- scrollUntilVisible:
+    element: "Skills, program sections, or goals covered..."
+- tapOn:
+    text: "Session focus"
+    index: 1
+- inputText: "UITEST spin entries"
+- pressKey: Enter
+# Scroll to the bottom so the skill box isn't hidden behind the footer buttons.
+- scrollUntilVisible:
+    element: "Include in student’s shared history"
+- tapOn: "Add a skill, e.g. Axel"
+- inputText: "Layback"
+# Return adds the skill (same as the Add button next to the box).
+- pressKey: Enter
+- assertVisible: "Remove Layback"
+- tapOn: "Save note"
+- assertVisible: ".*Sofia Chen.*UITEST spin entries.*"
+
+# Open it again: the note keeps what was typed.
+- tapOn: ".*Sofia Chen.*UITEST spin entries.*"
+- assertVisible: "Remove Layback"
+- tapOn: "Close"
+
+# Filter by student name and by time range.
+- tapOn: "Filter by student name..."
+- inputText: "Sofia"
+- pressKey: Enter
+- assertVisible: ".*UITEST spin entries.*"
+- assertNotVisible: ".*Emma Miller.*"
+- tapOn: "Filter by student name..."
+- eraseText: 10
+- pressKey: Enter
+- tapOn: "This week"
+- assertVisible: "\\d+ lessons?|No lessons match these filters\\."
+- tapOn: "All"
+
+# Select mode: pick the new entry and delete it.
+- tapOn: "Select"
+- assertVisible: "0 selected"
+- tapOn: ".*UITEST spin entries.*"
+- assertVisible: "1 selected"
+- tapOn:
+    text: "Delete"
+    index: 0
+- assertVisible: "Delete 1 lesson\\?"
+- tapOn:
+    text: "Delete"
+    index: 0
+- assertNotVisible: ".*UITEST spin entries.*"

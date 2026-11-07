@@ -1,0 +1,33 @@
+# Every tab opens its screen, and the header's add button changes with the tab.
+appId: host.exp.Exponent
+name: Navigation between tabs
+tags: [smoke]
+---
+- runFlow: subflows/start.yaml
+
+- assertVisible: "Coach dashboard"
+- assertVisible: "Add lesson"
+
+- tapOn: "Students"
+- assertVisible: "Student management"
+- assertVisible: "Add student"
+
+- tapOn: "Calendar"
+- assertVisible: "Schedule"
+- assertVisible: "Add lesson"
+
+- tapOn: "Programs"
+- assertVisible: "Program builder"
+- assertVisible: "New program"
+
+- tapOn: "Lessons"
+- assertVisible: "Training history"
+- assertVisible: "Past lesson"
+
+- tapOn: "Settings"
+- assertVisible: "Workspace preferences"
+# Settings has no add button in the header.
+- assertNotVisible: "Add lesson"
+
+- tapOn: "Home"
+- assertVisible: "Coach dashboard"

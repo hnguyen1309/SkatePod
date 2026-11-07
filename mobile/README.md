@@ -40,6 +40,22 @@ npm test
 
 This runs the unit tests in `src/*.test.ts` (for example `src/data.test.ts`) with Node's built-in test runner. They check the app's rules without opening the app, and GitHub runs them on every push too.
 
+### UI tests on the iOS Simulator (Maestro)
+
+The UI regression suite in `.maestro/` taps through the real app in Expo Go on the Simulator: tabs, students, calendar lessons and availability, the Lessons history, programs and settings. Each flow first resets the app to the sample data.
+
+1. Install Maestro once. Either `brew install mobile-dev-inc/tap/maestro`, or download `maestro.zip` from github.com/mobile-dev-inc/maestro/releases and unzip it into `~/.maestro` (the script finds it there).
+2. Start the app: `npx expo start`, then press **i** to open it in the iOS Simulator.
+3. In a second terminal, from `mobile/`:
+
+```bash
+sh run-ui-tests.sh
+```
+
+Run one flow with `sh run-ui-tests.sh .maestro/03-students.yaml`. A full run takes about 10 minutes. Results (a JUnit report, plus screenshots of any failure) go to `ui-test-results/`, which git ignores. GitHub doesn't run these yet; they need a Mac with the Simulator.
+
+What the first run found is in `UI-TEST-FINDINGS.md`. Dragging lessons, the time wheels, the rink map and the share sheet still need a check by hand.
+
 ## Why a setup script?
 
 `setup.sh` installs the newest Expo SDK and lets Expo choose package versions that match it, so the app keeps working with the current Expo Go app. After it runs, `package.json` will list the exact versions. Commit that change.

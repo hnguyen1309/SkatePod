@@ -1,0 +1,93 @@
+# Calendar: schedule a weekly lesson, preview it, edit it, block a double booking, delete it.
+appId: host.exp.Exponent
+name: Calendar lessons
+tags: [regression]
+---
+- runFlow: subflows/start.yaml
+- tapOn: "Calendar"
+- assertVisible: "Schedule"
+
+# Week navigation and Today.
+- tapOn: "Next week"
+- tapOn: "Previous week"
+- tapOn: "Today"
+
+# Schedule a lesson for Amelia on Sunday at 9:00 AM (the default start).
+- tapOn: "Add lesson"
+- assertVisible: "Schedule lesson"
+# The student and day chips run off the right edge, so swipe each row to reach Amelia and Sunday.
+# (Long swipes by screen position; a short swipe on a chip counts as a tap.)
+- swipe:
+    start: 92%, 21%
+    end: 5%, 21%
+    duration: 600
+- tapOn: "Amelia Park"
+- swipe:
+    start: 92%, 29%
+    end: 5%, 29%
+    duration: 600
+- tapOn: "SUN"
+- tapOn:
+    text: "Off-ice"
+    index: 0
+- assertVisible: "Every Sunday at 9:00 AM.*"
+- tapOn:
+    text: "Schedule lesson"
+    index: 1
+- assertNotVisible: "Every Sunday at 9:00 AM.*"
+
+# Day view for Sunday shows the new lesson.
+- tapOn: "Day"
+- tapOn: "SUN.*"
+- assertVisible: ".*Amelia.*"
+- assertVisible: ".*Off-ice · 45m.*"
+
+# Tapping the lesson opens the preview panel.
+- tapOn: ".*Amelia.*"
+- assertVisible: "Amelia Park"
+- assertVisible: "Off-ice · Sunday 9:00 AM – 9:45 AM"
+- assertVisible: "Add notes"
+
+# Edit: change the type, and the preview stays open with the new type.
+- tapOn: "Edit"
+- assertVisible: "Edit lesson"
+- tapOn:
+    text: "Freestyle"
+    index: 0
+- tapOn: "Save changes"
+- assertVisible: "Freestyle · Sunday 9:00 AM – 9:45 AM"
+- tapOn: "Close preview"
+
+# Double booking: Lily can't take the same Sunday 9:00 AM slot.
+- tapOn: "Add lesson"
+- tapOn: "Lily Kim"
+- swipe:
+    start: 92%, 29%
+    end: 5%, 29%
+    duration: 600
+- tapOn: "SUN"
+- tapOn:
+    text: "Schedule lesson"
+    index: 1
+- assertVisible: "That time is taken"
+- tapOn: "OK"
+
+# A lesson shorter than 5 minutes is refused.
+- tapOn:
+    text: "Duration \\(minutes\\)"
+    index: 1
+- eraseText: 5
+- inputText: "2"
+- tapOn:
+    text: "Schedule lesson"
+    index: 1
+- assertVisible: "Check the times"
+- tapOn: "OK"
+- tapOn: "Cancel"
+
+# Delete from the preview asks first.
+- tapOn: ".*Amelia.*"
+- tapOn: "Delete lesson"
+- assertVisible: "Delete lesson?"
+- tapOn: "Delete"
+- assertNotVisible: ".*Amelia.*"

@@ -72,3 +72,6 @@ dist/
 
 ## IDEs
 .idea/
+
+# Maestro UI test results (run-ui-tests.sh)
+mobile/ui-test-results/

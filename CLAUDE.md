@@ -40,7 +40,10 @@ sh setup.sh                                       # one time
 npx expo start                                    # scan the QR code with Expo Go (--tunnel if needed)
 npx tsc --noEmit                                  # type check (no linter)
 npm test                                          # unit tests: src/**/*.test.ts with Node's built-in runner
+sh run-ui-tests.sh [.maestro/NN-flow.yaml]        # Maestro UI suite on the iOS Simulator (needs `npx expo start`); resets app data
 ```
+
+**UI tests (`mobile/.maestro/`).** One flow per area, each starting with `subflows/start.yaml` (open Expo Go, reset to sample data). Maestro matches text case-insensitively, so a field's capitalised label and the box share a name: tap the box with `index: 1`. Cards and buttons read as one combined label, so match names with `.*Name.*`. Things below the fold or behind a sheet's footer need `scrollUntilVisible` first. Results go to `mobile/ui-test-results/` (ignored by git). Findings from runs are in `mobile/UI-TEST-FINDINGS.md`. When you change a screen's text or layout, update its flow.
 
 `backend/requests.http` has ready-made API requests.
 
