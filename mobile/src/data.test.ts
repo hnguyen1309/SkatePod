@@ -3,7 +3,16 @@
 // They use Node's built-in test runner, so there's nothing extra to install, and they never open the app.
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { colorForType, syncLessonNote, upgradeLesson, type Lesson, type Note } from "./data.ts";
+import {
+  colorForType,
+  isEmptyNote,
+  lessonHistoryToAdd,
+  matchesHistoryFilter,
+  syncLessonNote,
+  upgradeLesson,
+  type Lesson,
+  type Note,
+} from "./data.ts";
 
 // Made-up data: Lily's Thursday 9:00 AM Freestyle lesson, 105 minutes.
 const lesson: Lesson = { id: "l2", studentId: "s2", day: 3, start: 9 * 60, type: "Freestyle", duration: 105, color: "teal" };
@@ -99,5 +108,66 @@ describe("lesson colors come from the lesson type", () => {
     const upgraded = upgradeLesson({ ...old, row: 2, type: "Off-ice" } as Lesson & { row: number });
     assert.equal(upgraded.start, 11 * 60);
     assert.equal(upgraded.color, "purple");
+  });
+});
+
+describe("lessonHistoryToAdd: every lesson that happened shows up in the Lessons tab", () => {
+  let next = 0;
+  const id = () => `h${next++}`;
+  const monday = new Date(2026, 10, 2, 0, 0); // Mon Nov 2, 2026
+  const fridayNight = new Date(2026, 10, 6, 22, 0); // Fri Nov 6, 10 PM
+
+  test("a lesson that already started this week gets an empty entry", () => {
+    const added = lessonHistoryToAdd([lesson], [], monday, fridayNight, id);
+    assert.equal(added.length, 1);
+    assert.equal(added[0].date, thursday9am.toISOString());
+    assert.equal(added[0].lessonId, "l2");
+    assert.ok(isEmptyNote(added[0]));
+  });
+
+  test("a lesson later than now isn't added yet", () => {
+    const wednesdayNoon = new Date(2026, 10, 4, 12, 0);
+    assert.equal(lessonHistoryToAdd([lesson], [], monday, wednesdayNoon, id).length, 0);
+  });
+
+  test("a lesson that already has a note that day isn't added twice", () => {
+    assert.equal(lessonHistoryToAdd([lesson], [note()], monday, fridayNight, id).length, 0);
+  });
+
+  test("history starts when the lesson was added, not before", () => {
+    const addedFriday = { ...lesson, createdAt: new Date(2026, 10, 6, 8, 0).toISOString() }; // added after Thursday's time
+    assert.equal(lessonHistoryToAdd([addedFriday], [], monday, fridayNight, id).length, 0);
+  });
+
+  test("weeks in between are all filled in", () => {
+    const threeWeeksLater = new Date(2026, 10, 20, 22, 0); // Fri Nov 20
+    const added = lessonHistoryToAdd([lesson], [], monday, threeWeeksLater, id);
+    assert.deepEqual(
+      added.map((item) => new Date(item.date).getDate()),
+      [5, 12, 19],
+    );
+  });
+});
+
+describe("matchesHistoryFilter: filters on the Lessons tab", () => {
+  const lily = { name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE" as const, level: "Silver" }] };
+  const now = new Date(2026, 10, 6, 22, 0);
+  const all = { name: "", range: "All" as const, level: null };
+
+  test("by student name, ignoring capitals", () => {
+    assert.equal(matchesHistoryFilter(note(), lily, { ...all, name: "lily" }, now), true);
+    assert.equal(matchesHistoryFilter(note(), lily, { ...all, name: "emma" }, now), false);
+  });
+
+  test("by time", () => {
+    const old = note({ date: new Date(2026, 8, 1).toISOString() });
+    assert.equal(matchesHistoryFilter(note(), lily, { ...all, range: "This week" }, now), true);
+    assert.equal(matchesHistoryFilter(old, lily, { ...all, range: "Last 30 days" }, now), false);
+    assert.equal(matchesHistoryFilter(old, lily, all, now), true);
+  });
+
+  test("by level", () => {
+    assert.equal(matchesHistoryFilter(note(), lily, { ...all, level: "Silver" }, now), true);
+    assert.equal(matchesHistoryFilter(note(), lily, { ...all, level: "Gold" }, now), false);
   });
 });

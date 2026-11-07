@@ -386,11 +386,11 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         onDelete={() => remove(detail)}
         onEdit={() => setEditingId(detail.id)}
         onNotes={() => {
-          // The note editor opens on the Notes tab and brings the coach back here when it closes.
+          // The note editor opens on the Lessons tab and brings the coach back here when it closes.
           if (detailNote) {
-            navigate("Notes", { kind: "openNote", noteId: detailNote.id, returnTo: "Calendar" });
+            navigate("Lessons", { kind: "openNote", noteId: detailNote.id, returnTo: "Calendar" });
           } else {
-            navigate("Notes", {
+            navigate("Lessons", {
               kind: "newNote",
               studentId: detail.studentId,
               lesson: { id: detail.id, date: (detailDate ?? new Date()).toISOString(), type: detail.type, duration: detail.duration },
@@ -457,7 +457,7 @@ function LessonEditor({
       return;
     }
     // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
-    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type) };
+    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString() };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {

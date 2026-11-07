@@ -171,13 +171,13 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
               <Button
                 icon="notes"
                 label="View notes"
-                onPress={() => closeDetailThen(() => navigate("Notes", { kind: "filterNotes", studentId: detail.id }))}
+                onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "filterNotes", studentId: detail.id }))}
                 variant="secondary"
               />
               <Button
                 icon="plus"
                 label="New lesson note"
-                onPress={() => closeDetailThen(() => navigate("Notes", { kind: "newNote", studentId: detail.id }))}
+                onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "newNote", studentId: detail.id }))}
                 variant="secondary"
               />
               <Button label="Edit profile" onPress={() => closeDetailThen(() => setEditor({ mode: "edit", student: detail }))} />

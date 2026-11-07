@@ -46,6 +46,7 @@ export type Lesson = {
   type: string;
   duration: number; // minutes
   color: LessonColor;
+  createdAt?: string; // when the lesson was added to the calendar; training history starts here
 };
 
 export type Note = {
@@ -476,6 +477,87 @@ export function syncLessonNote(notes: Note[], before: Lesson, after: Lesson, bef
         }
       : item,
   );
+}
+
+/** Monday 00:00 of the week `date` is in. */
+export function startOfWeek(date: Date) {
+  const monday = new Date(date);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return monday;
+}
+
+/** Every time a weekly lesson started after `from` and up to `to` (both included only at `to`). */
+export function lessonTimesBetween(lesson: Pick<Lesson, "day" | "start">, from: Date, to: Date): Date[] {
+  const times: Date[] = [];
+  const time = startOfWeek(from);
+  time.setDate(time.getDate() + lesson.day);
+  time.setHours(Math.floor(lesson.start / 60), lesson.start % 60, 0, 0);
+  while (time <= to) {
+    if (time > from) times.push(new Date(time));
+    time.setDate(time.getDate() + 7);
+  }
+  return times;
+}
+
+/** A training-history entry for a lesson that happened: a note with nothing written in it yet. */
+export function emptyLessonNote(lesson: Lesson, date: Date, id: string): Note {
+  return {
+    id,
+    studentId: lesson.studentId,
+    date: date.toISOString(),
+    title: `${lesson.type} lesson`,
+    lessonType: lesson.type,
+    duration: `${lesson.duration} minutes`,
+    overall: "",
+    focus: "",
+    observations: "",
+    nextSteps: "",
+    skills: [],
+    shared: false,
+    lessonId: lesson.id,
+  };
+}
+
+/** True when the coach hasn't written anything in the note yet. */
+export function isEmptyNote(note: Note) {
+  return !note.observations.trim() && !note.focus.trim() && !note.nextSteps.trim() && note.skills.length === 0;
+}
+
+/**
+ * The Lessons tab is the training history: every calendar lesson that has already started gets an
+ * entry, with or without notes. This finds the entries to add for lessons that started after `since`
+ * (the last time we checked) and up to `now`. A lesson's history begins when it was added to the calendar,
+ * and a lesson that already has a note for that day isn't added twice.
+ */
+export function lessonHistoryToAdd(lessons: Lesson[], notes: Note[], since: Date, now: Date, newId: () => string): Note[] {
+  const added: Note[] = [];
+  for (const lesson of lessons) {
+    const created = lesson.createdAt ? new Date(lesson.createdAt) : since;
+    const from = created > since ? created : since;
+    for (const time of lessonTimesBetween(lesson, from, now)) {
+      if (!findLessonNote([...notes, ...added], lesson, time)) added.push(emptyLessonNote(lesson, time, newId()));
+    }
+  }
+  return added;
+}
+
+export type HistoryRange = "This week" | "Last 30 days" | "All";
+export const HISTORY_RANGES: HistoryRange[] = ["This week", "Last 30 days", "All"];
+
+/** Filters for the Lessons tab: student name, how far back, and level (any of the student's disciplines). */
+export function matchesHistoryFilter(
+  note: Note,
+  student: Pick<Student, "name" | "disciplines"> | undefined,
+  filter: { name: string; range: HistoryRange; level: string | null },
+  now: Date,
+) {
+  if (filter.name.trim() && !(student?.name ?? "").toLowerCase().includes(filter.name.trim().toLowerCase())) return false;
+  const date = new Date(note.date);
+  if (filter.range === "This week" && date < startOfWeek(now)) return false;
+  if (filter.range === "Last 30 days" && now.getTime() - date.getTime() > 30 * 24 * 60 * 60 * 1000) return false;
+  if (filter.level && !(student?.disciplines ?? []).some((item) => item.level === filter.level)) return false;
+  return true;
 }
 
 export function formatShortDate(iso: string) {
