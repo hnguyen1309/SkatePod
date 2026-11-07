@@ -6,8 +6,7 @@ tags: [regression]
 - runFlow: subflows/start.yaml
 - tapOn: "Calendar"
 
-- tapOn: "Set availability (optional)"
-- assertVisible: "Availability"
+- tapOn: "Availability"
 - assertVisible: "Add a block"
 # Default block is 3:00 PM–6:00 PM on today's weekday; put it on Wednesday with a place.
 - tapOn: "WED"
@@ -49,5 +48,5 @@ tags: [regression]
 - tapOn: "Delete block"
 - assertNotVisible: "Wednesday · 3:00 PM–6:00 PM"
 - tapOn: "Done"
-- assertVisible: "Set availability \\(optional\\)"
+- assertVisible: "Availability"
 - assertNotVisible: "Not available"

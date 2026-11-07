@@ -47,6 +47,7 @@ tags: [regression]
 - tapOn: "Day"
 - tapOn: "SUN.*"
 - assertVisible: ".*Amelia.*"
+# The card itself shows a clock and "45m"; its accessibility label also has the type.
 - assertVisible: ".*Off-ice · 45m.*"
 
 # Tapping the lesson opens the preview panel.

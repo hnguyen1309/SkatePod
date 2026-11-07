@@ -19,10 +19,10 @@ export const colors = {
   dangerSoft: "#f8eeee",
   white: "#ffffff",
   track: "#e9edef",
-  // Calendar: time outside the coach's availability blocks. See-through, so hour lines and the
-  // "today" tint still show under it.
-  unavailable: "rgba(23, 37, 54, 0.07)",
-  // Calendar: the edge of an availability block.
+  // Calendar: the light diagonal stripes on time outside the coach's availability blocks (the background
+  // stays white). See-through, so hour lines and the "today" tint still show between them.
+  unavailable: "rgba(23, 37, 54, 0.13)",
+  // Calendar: the dashed outline of an availability block.
   availableEdge: "#9cc6c9",
 };
 
