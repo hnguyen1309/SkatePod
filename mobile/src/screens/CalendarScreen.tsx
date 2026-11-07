@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Alert, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { Icon } from "../components/Icon";
 import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
@@ -41,6 +41,10 @@ function formatRange(offset: number) {
   return `${fmt(dates[0].date)} – ${fmt(dates[6].date)}`;
 }
 
+// The lesson whose preview is open. Kept outside the screen so it's still open when the coach comes back
+// from writing the lesson's note (switching tabs removes and recreates this screen).
+let rememberedPreviewId: string | null = null;
+
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
   const { lessons, setLessons, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
@@ -49,7 +53,11 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   // The lesson whose detail window is open (tap a lesson to open it), and the lesson being edited.
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailIdState] = useState<string | null>(rememberedPreviewId);
+  const setDetailId = (id: string | null) => {
+    rememberedPreviewId = id;
+    setDetailIdState(id);
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   // Where the coach tapped on the calendar, so the new lesson starts there (like Google Calendar).
   const [tapped, setTapped] = useState<{ day: number; start: number } | null>(null);
@@ -117,8 +125,9 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
 
   return (
+    <View style={{ flex: 1 }}>
     <Screen scrollEnabled={draggingDay === null}>
-      <Heading description="Tap an empty time to add a lesson. Tap a lesson to see, edit or delete it; after that you can drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
+      <Heading description="Tap an empty time to add a lesson. Tap a lesson to preview it below, then drag it to move it or drag its bottom edge to change the length." eyebrow="Schedule" title="Calendar" />
 
       <View style={{ flexDirection: "row", gap: 10, alignItems: "center", marginBottom: 14 }}>
         <View style={{ flex: 1 }}>
@@ -225,6 +234,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
                         const quarters = Math.floor((event.nativeEvent.locationY / ROW_HEIGHT) * 4);
                         const start = Math.min(FIRST_HOUR * 60 + quarters * 15, (LAST_HOUR - 1) * 60 + 45);
                         setSelectedId(null);
+                        setDetailId(null); // tapping an empty time closes the lesson preview
                         setTapped({ day: dayIndex, start });
                         setEditorOpen(true);
                       }}
@@ -310,32 +320,6 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
         </View>
       </Card>
 
-      {detail ? (
-        <LessonDetailSheet
-          lesson={detail}
-          noteDate={detailNote ? detailDate : null}
-          onAddNotes={() => {
-            setDetailId(null);
-            if (detailNote) {
-              navigate("Notes", { kind: "openNote", noteId: detailNote.id });
-            } else {
-              navigate("Notes", {
-                kind: "newNote",
-                studentId: detail.studentId,
-                lesson: { id: detail.id, date: (detailDate ?? new Date()).toISOString(), type: detail.type, duration: detail.duration },
-              });
-            }
-          }}
-          onClose={() => setDetailId(null)}
-          onDelete={() => remove(detail)}
-          onEdit={() => {
-            setDetailId(null);
-            setEditingId(detail.id);
-          }}
-          place={placeFor(detail, availability)}
-          student={studentById(detail.studentId)}
-        />
-      ) : null}
 
       {editing ? (
         <LessonEditor
@@ -346,7 +330,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           onClose={() => setEditingId(null)}
           onSave={(lesson) => {
             saveLesson(editing, lesson);
-            setEditingId(null); // saved: close the editor and go straight back to the calendar
+            setEditingId(null); // saved: back to the calendar, with the lesson's preview still open
           }}
           students={students.map((student) => ({ id: student.id, name: student.name }))}
         />
@@ -375,7 +359,35 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
       {availabilityOpen ? (
         <AvailabilitySheet blocks={availability} onChange={setAvailability} onClose={() => setAvailabilityOpen(false)} />
       ) : null}
+      {/* Room under the content so the preview panel doesn't cover the bottom of the page. */}
+      {detail ? <View style={{ height: 260 }} /> : null}
     </Screen>
+
+    {detail ? (
+      <LessonPreview
+        hasNote={Boolean(detailNote)}
+        lesson={detail}
+        onClose={() => setDetailId(null)}
+        onDelete={() => remove(detail)}
+        onEdit={() => setEditingId(detail.id)}
+        onNotes={() => {
+          // The note editor opens on the Notes tab and brings the coach back here when it closes.
+          if (detailNote) {
+            navigate("Notes", { kind: "openNote", noteId: detailNote.id, returnTo: "Calendar" });
+          } else {
+            navigate("Notes", {
+              kind: "newNote",
+              studentId: detail.studentId,
+              lesson: { id: detail.id, date: (detailDate ?? new Date()).toISOString(), type: detail.type, duration: detail.duration },
+              returnTo: "Calendar",
+            });
+          }
+        }}
+        place={placeFor(detail, availability)}
+        student={studentById(detail.studentId)}
+      />
+    ) : null}
+    </View>
   );
 }
 
@@ -492,61 +504,77 @@ function LessonEditor({
 
 // The window that opens when you tap a lesson: everything about that slot, plus Edit, Delete
 // and Add notes. (Adding a new lesson is the Add button or tapping an empty time.)
-function LessonDetailSheet({
+// The small panel along the bottom third of the screen that opens when you tap a lesson, like a
+// calendar app's event preview. The calendar stays visible and usable above it. It stays open while
+// you edit the lesson or its note, and closes with the X, after Delete, or when you tap an empty time.
+function LessonPreview({
   lesson,
   student,
   place,
-  noteDate,
+  hasNote,
   onEdit,
   onDelete,
-  onAddNotes,
+  onNotes,
   onClose,
 }: {
   lesson: Lesson;
   student?: { name: string; focus: string };
   place?: string;
-  noteDate: Date | null; // set when notes were already written for this lesson in the week on screen
+  hasNote: boolean; // a note was already written for this lesson in the week on screen
   onEdit: () => void;
   onDelete: () => void;
-  onAddNotes: () => void;
+  onNotes: () => void;
   onClose: () => void;
 }) {
   const palette = lessonColors[lesson.color];
+  const { height } = useWindowDimensions();
   return (
-    <Sheet
-      footer={
-        <>
-          <Button label="Delete" onPress={onDelete} style={{ flex: 1 }} variant="danger" />
-          <Button icon="edit" label="Edit" onPress={onEdit} style={{ flex: 1.5 }} />
-        </>
-      }
-      onClose={onClose}
-      title="Lesson details"
-      visible
+    <View
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        maxHeight: height / 3,
+        backgroundColor: colors.white,
+        borderTopLeftRadius: radius.lg,
+        borderTopRightRadius: radius.lg,
+        borderTopWidth: 1,
+        borderColor: colors.border,
+        paddingHorizontal: 18,
+        paddingTop: 8,
+        paddingBottom: 14,
+        shadowColor: "#000",
+        shadowOpacity: 0.12,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: -3 },
+      }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <View style={{ width: 6, alignSelf: "stretch", borderRadius: 3, backgroundColor: palette.border }} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>{student?.name ?? "Removed student"}</Text>
-          <Text style={{ fontSize: 13, color: colors.muted, marginTop: 3 }}>{lesson.type} lesson</Text>
+      <View style={{ alignSelf: "center", width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 10 }} />
+      <ScrollView>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{ width: 5, alignSelf: "stretch", borderRadius: 3, backgroundColor: palette.border }} />
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={{ fontSize: 17, fontWeight: "700", color: colors.text }}>
+              {student?.name ?? "Removed student"}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
+              {lesson.type} · {FULL_WEEKDAYS[lesson.day]} {formatTime(lesson.start)} – {formatTime(lesson.start + lesson.duration)}
+            </Text>
+          </View>
+          <IconButton icon="close" label="Close preview" onPress={onClose} size={30} />
         </View>
-      </View>
-      <View style={{ gap: 12, paddingVertical: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.borderSoft, marginBottom: 16 }}>
-        <Meta icon="calendar" text={`Every ${FULL_WEEKDAYS[lesson.day]}`} />
-        <Meta icon="clock" text={`${formatTime(lesson.start)} – ${formatTime(lesson.start + lesson.duration)} · ${lesson.duration} minutes`} />
-        {place ? <Meta icon="home" text={place} /> : null}
-        <Meta icon="notes" text={student?.focus ? `Focus: ${student.focus}` : "No focus set"} />
-      </View>
-      <Button icon="notes" label={noteDate ? "Open lesson notes" : "Add lesson notes"} onPress={onAddNotes} variant="secondary" />
-      {noteDate ? (
-        <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 8 }}>
-          Notes already written for {noteDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}. You can add to them.
-        </Text>
-      ) : null}
-      <Text style={{ fontSize: 12, color: colors.muted, textAlign: "center", marginTop: 14 }}>
-        Tip: close this window, then drag the lesson on the calendar to move it.
-      </Text>
-    </Sheet>
+        <View style={{ gap: 6, marginTop: 10 }}>
+          {place ? <Meta icon="home" text={place} /> : null}
+          <Meta icon="notes" text={student?.focus ? `Focus: ${student.focus}` : "No focus set"} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <Button icon="notes" label={hasNote ? "Open notes" : "Add notes"} onPress={onNotes} style={{ flex: 1.3 }} variant="secondary" />
+          <Button icon="edit" label="Edit" onPress={onEdit} style={{ flex: 1 }} />
+          <IconButton background={colors.dangerSoft} color={colors.danger} icon="trash" label="Delete lesson" onPress={onDelete} size={44} />
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 

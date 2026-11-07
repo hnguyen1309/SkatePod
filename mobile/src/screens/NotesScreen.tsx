@@ -3,15 +3,24 @@ import { Alert, Pressable, Share, Text, TextInput, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { Button, Card, Empty, Field, Heading, Label, PickerField, Screen, SearchBar, Sheet, ToggleRow, styles } from "../components/ui";
 import { DURATIONS, LESSON_TYPES, OVERALL, formatShortDate, newId, type Note } from "../data";
-import type { ScreenProps } from "../navigation";
+import type { ScreenProps, Tab } from "../navigation";
 import { useStore } from "../store";
 import { colors, radius } from "../theme";
 
-export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
+export function NotesScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
   const { notes, setNotes, students, studentById, settings } = useStore();
   const [search, setSearch] = useState("");
   const [studentFilter, setStudentFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<Note | null>(null);
+  // Where to go when the editor closes, if it was opened from another screen (e.g. the Calendar).
+  const [returnTo, setReturnTo] = useState<Tab | null>(null);
+  function closeEditor() {
+    setEditing(null);
+    if (returnTo) {
+      setReturnTo(null);
+      navigate(returnTo);
+    }
+  }
 
   // From the calendar, `lesson` fills in the note with that lesson's date, type and length.
   function blankNote(studentId?: string, lesson?: { id: string; date: string; type: string; duration: number }): Note {
@@ -43,6 +52,7 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
   useEffect(() => {
     if (!intent) return;
     if (intent.kind === "add") startNew();
+    if ((intent.kind === "newNote" || intent.kind === "openNote") && intent.returnTo) setReturnTo(intent.returnTo);
     if (intent.kind === "newNote") startNew(intent.studentId, intent.lesson);
     // The calendar found a note already written for that lesson: open it so the coach can add to it.
     if (intent.kind === "openNote") {
@@ -69,7 +79,7 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
   function save(note: Note) {
     const saved = { ...note, title: note.title || `${note.lessonType} lesson` };
     setNotes((current) => (current.some((item) => item.id === saved.id) ? current.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...current]));
-    setEditing(null);
+    closeEditor();
   }
 
   function remove(note: Note) {
@@ -80,7 +90,7 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
         style: "destructive",
         onPress: () => {
           setNotes((current) => current.filter((item) => item.id !== note.id));
-          setEditing(null);
+          closeEditor();
         },
       },
     ]);
@@ -137,7 +147,7 @@ export function NotesScreen({ intent, onIntentHandled }: ScreenProps) {
         <NoteEditor
           isNew={!notes.some((note) => note.id === editing.id)}
           note={editing}
-          onClose={() => setEditing(null)}
+          onClose={closeEditor}
           onDelete={() => remove(editing)}
           onSave={save}
         />
