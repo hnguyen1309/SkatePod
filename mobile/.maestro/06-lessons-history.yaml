@@ -37,6 +37,21 @@ tags: [regression]
 - assertVisible: "Remove Layback"
 - tapOn: "Close"
 
+# Closing with the X after a change asks first (SKATE-84): Cancel keeps the editor open, Discard drops the change.
+- tapOn: ".*Sofia Chen.*UITEST spin entries.*"
+- scrollUntilVisible:
+    element: "Include in student’s shared history"
+- tapOn: "Add a skill, e.g. Axel"
+- inputText: "Axel"
+- tapOn: "Close"
+- assertVisible: "Discard changes?"
+- tapOn: "Cancel"
+- assertVisible: "Save note"
+- tapOn: "Close"
+- tapOn: "Discard"
+- assertVisible: "Training history"
+- assertNotVisible: ".*Axel.*"
+
 # Filter by student name and by time range.
 - tapOn: "Filter by student name..."
 - inputText: "Sofia"

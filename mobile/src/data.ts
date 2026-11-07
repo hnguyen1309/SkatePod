@@ -529,6 +529,18 @@ export function isEmptyNote(note: Note) {
 }
 
 /**
+ * True when the note in the editor (`draft`) differs from the note it was opened with (`original`).
+ * The editor uses this to ask "Discard changes?" when the coach closes it with the X,
+ * and to close straight away when nothing was changed.
+ */
+export function noteHasChanges(original: Note, draft: Note) {
+  const fields: (keyof Note)[] = ["studentId", "date", "title", "lessonType", "duration", "overall", "focus", "observations", "nextSteps", "shared", "lessonId"];
+  if (fields.some((field) => original[field] !== draft[field])) return true;
+  // Skills are a list, so compare them one by one (same skills in the same order).
+  return original.skills.length !== draft.skills.length || original.skills.some((skill, i) => skill !== draft.skills[i]);
+}
+
+/**
  * The Lessons tab is the training history: every calendar lesson that has already started gets an
  * entry, with or without notes. This finds the entries to add for lessons that started after `since`
  * (the last time we checked) and up to `now`. A lesson's history begins when it was added to the calendar,
