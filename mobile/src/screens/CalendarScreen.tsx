@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Alert, Animated, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Alert, Animated, LayoutAnimation, PanResponder, Pressable, ScrollView, Switch, Text, View, useWindowDimensions, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Icon } from "../components/Icon";
-import { Button, Card, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
+import { Button, Card, Chips, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
   DEFAULT_HOUR_HEIGHT,
   FIRST_HOUR,
@@ -11,13 +11,19 @@ import {
   LAST_HOUR,
   LESSON_TYPES,
   WEEKDAYS,
+  addDaysToKey,
   calendarScale,
+  countWeeklyLessons,
+  endDateAfterLessons,
+  isOneTimeLesson,
+  moveToWeekday,
+  nextDateOnWeekday,
+  weekdayOfKey,
   findBlockOverlap,
   colorForType,
   findClash,
   findLessonNote,
   fromDateKey,
-  nextLessonTime,
   toDateKey,
   isLessonActiveOn,
   syncLessonNote,
@@ -102,7 +108,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
 
   function moveLesson(lesson: Lesson, changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) {
-    const moved = { ...lesson, ...changes };
+    // A one-time lesson dragged to another day takes that day's date in the same week.
+    const moved = changes.day === undefined ? { ...lesson, ...changes } : { ...moveToWeekday(lesson, changes.day), ...changes };
     if (moved.day === lesson.day && moved.start === lesson.start && moved.duration === lesson.duration) return;
     const clash = findClash(moved, lessons);
     if (clash) {
@@ -653,6 +660,10 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   );
 }
 
+// How a repeating lesson stops: never, on a date, or after a number of lessons.
+const RECURRENCE_ENDS = ["No end date", "Specific date", "After X lessons"] as const;
+type RecurrenceEnd = (typeof RECURRENCE_ENDS)[number];
+
 function LessonEditor({
   students,
   lessons,
@@ -676,7 +687,6 @@ function LessonEditor({
 }) {
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(initial?.studentId ?? studentIds[0] ?? "");
-  const [day, setDay] = useState(WEEKDAYS[defaultDay]);
   // Start, end and duration stay in sync: change the start and the end moves with it (same length);
   // change the end or the duration and the other one updates.
   const [start, setStart] = useState(initial?.start ?? defaultStart);
@@ -684,12 +694,49 @@ function LessonEditor({
   const [durationText, setDurationText] = useState(String(defaultDuration));
   const [type, setType] = useState(initial?.type ?? LESSON_TYPES[0]);
   const end = start + duration;
-  // A weekly lesson runs from its start date (today at the earliest) until its end date, or forever.
-  // Lessons saved before start dates existed have none ("Already running") until the coach picks one.
+  // The date of the lesson (the first one, if it repeats). The weekday comes from the date, so there's
+  // no separate Day picker. If the date we're handed isn't on the lesson's weekday (e.g. tapping
+  // Tuesday in an earlier week starts it today), it moves to the next day on that weekday.
   const today = toDateKey(new Date());
-  const [startDate, setStartDate] = useState<string | undefined>(initial ? initial.startDate : (defaultStartDate ?? today));
-  const [endDate, setEndDate] = useState<string | undefined>(initial?.endDate);
-  const firstLesson = nextLessonTime({ day: WEEKDAYS.indexOf(day), start, startDate }, startDate ? fromDateKey(startDate) : new Date());
+  const firstDate = nextDateOnWeekday(initial ? (initial.startDate ?? today) : (defaultStartDate ?? today), initial?.day ?? defaultDay);
+  const [date, setDate] = useState(firstDate);
+  const [dateChanged, setDateChanged] = useState(false);
+  const day = weekdayOfKey(date);
+  // New lessons happen once unless the coach turns on Repeat. (Stored the same way as weekly lessons,
+  // just with the end date on the start date: see isOneTimeLesson in data.ts.)
+  const wasRepeating = initial ? !isOneTimeLesson(initial) : false;
+  const [repeat, setRepeat] = useState(wasRepeating);
+  const [endMode, setEndMode] = useState<RecurrenceEnd>(wasRepeating && initial?.endDate ? "Specific date" : "No end date");
+  const [untilDate, setUntilDate] = useState(wasRepeating && initial?.endDate ? initial.endDate : addDaysToKey(firstDate, 7 * 7));
+  const [countText, setCountText] = useState(String(wasRepeating && initial?.endDate ? Math.max(1, countWeeklyLessons(firstDate, initial.endDate)) : 10));
+  const count = Number.parseInt(countText, 10);
+  // What gets saved. Lessons saved before start dates existed have none ("already running"); they keep
+  // it that way as long as they repeat and the coach doesn't touch the date.
+  const startDate = repeat && initial && !dateChanged ? initial.startDate : date;
+  const endDate = !repeat
+    ? date
+    : endMode === "Specific date"
+      ? untilDate
+      : endMode === "After X lessons" && count > 0
+        ? endDateAfterLessons(date, count)
+        : undefined;
+  const lessonCount = endDate ? countWeeklyLessons(date, endDate) : Infinity;
+
+  function changeDate(key: string) {
+    setDate(key);
+    setDateChanged(true);
+  }
+
+  // The Recurrence ends card slides open under the switch instead of popping in.
+  function toggleRepeat(on: boolean) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setRepeat(on);
+  }
+
+  function changeEndMode(mode: RecurrenceEnd) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setEndMode(mode);
+  }
 
   function changeDuration(minutes: number) {
     setDuration(minutes);
@@ -711,16 +758,24 @@ function LessonEditor({
       Alert.alert("Outside calendar hours", outside);
       return;
     }
-    if (startDate && startDate < today && startDate !== initial?.startDate) {
-      Alert.alert("Check the start date", "A weekly lesson can start today at the earliest. To record a lesson that already happened, add a past lesson on the Lessons tab.");
+    if (dateChanged && date < today) {
+      Alert.alert("Check the date", "A lesson can be scheduled for today at the earliest. To record a lesson that already happened, add a past lesson on the Lessons tab.");
       return;
     }
-    if (endDate && startDate && endDate < startDate) {
-      Alert.alert("Check the end date", "The end date needs to be on or after the start date.");
+    if (!repeat && wasRepeating && date < today) {
+      Alert.alert("Pick a new date", "This lesson started in the past. To make it a one-time lesson, pick today or a later date.");
+      return;
+    }
+    if (repeat && endMode === "After X lessons" && !(count > 0)) {
+      Alert.alert("How many lessons?", "Enter how many lessons to schedule, 1 or more.");
+      return;
+    }
+    if (repeat && endMode === "Specific date" && untilDate < date) {
+      Alert.alert("Check the end date", "The recurrence needs to end on or after the lesson date.");
       return;
     }
     // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
-    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day: WEEKDAYS.indexOf(day), start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString(), startDate, endDate };
+    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day, start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString(), startDate, endDate };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -750,7 +805,6 @@ function LessonEditor({
       ) : (
         <Text style={{ color: colors.muted, marginBottom: 16 }}>You don’t have any students yet.</Text>
       )}
-      <PickerField label="Day" onChange={setDay} options={WEEKDAYS} value={day} />
       <TimeRange
         end={end}
         onChangeEnd={(minutes) => changeDuration(Math.max(0, minutes - start))}
@@ -768,24 +822,62 @@ function LessonEditor({
         value={durationText}
       />
       <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
-      <View style={{ flexDirection: "row", gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <DateField
-            emptyLabel="Already running"
-            label="Starts"
-            minimum={initial?.startDate && initial.startDate < today ? initial.startDate : today}
-            onChange={setStartDate}
-            value={startDate}
-          />
+      {/* Row A: the date. Row B: the Repeat switch. Row C: how the repeating ends, only while Repeat is on. */}
+      <DateField
+        emptyLabel="Pick a date"
+        label="Date"
+        minimum={firstDate < today ? firstDate : today}
+        onChange={changeDate}
+        value={date}
+      />
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: -4, marginBottom: 12 }}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>Repeat</Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{repeat ? `Every ${FULL_WEEKDAYS[day]}` : "Just this once"}</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <DateField emptyLabel="No end date" label="Ends (optional)" minimum={startDate ?? today} onChange={setEndDate} onClear={() => setEndDate(undefined)} value={endDate} />
-        </View>
+        <Switch
+          accessibilityLabel="Repeat weekly"
+          ios_backgroundColor={colors.border}
+          onValueChange={toggleRepeat}
+          trackColor={{ false: colors.border, true: colors.teal }}
+          value={repeat}
+        />
       </View>
-      <Text style={{ fontSize: 12, color: colors.muted, marginTop: -6, marginBottom: 16 }}>
-        {firstLesson
-          ? `Every ${FULL_WEEKDAYS[WEEKDAYS.indexOf(day)]} at ${formatTime(start)}${endDate ? ` until ${formatDateKey(endDate)}` : ""}. ${startDate ? `First lesson: ${firstLesson.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}.` : ""}`
-          : "No lessons fall between these dates. Move the end date later."}
+      {repeat ? (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radius.md,
+            backgroundColor: colors.bg,
+            padding: 12,
+            paddingBottom: endMode === "No end date" ? 12 : 0,
+            marginBottom: 12,
+            overflow: "hidden",
+          }}
+        >
+          <Label>Recurrence ends</Label>
+          <Chips onChange={changeEndMode} options={RECURRENCE_ENDS} value={endMode} />
+          {endMode === "Specific date" ? (
+            <View style={{ marginTop: 12 }}>
+              <DateField emptyLabel="Pick a date" label="Ends on" minimum={date} onChange={setUntilDate} value={untilDate} />
+            </View>
+          ) : null}
+          {endMode === "After X lessons" ? (
+            <View style={{ marginTop: 12 }}>
+              <Field keyboardType="number-pad" label="Number of lessons" onChangeText={setCountText} value={countText} />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
+        {!repeat
+          ? `One lesson on ${formatDateKey(date)} at ${formatTime(start)}.`
+          : lessonCount === 0
+            ? "No lessons fall between these dates. Move the end date later."
+            : `Every ${FULL_WEEKDAYS[day]} at ${formatTime(start)}, starting ${formatDateKey(date)}${
+                endDate ? ` until ${formatDateKey(endDate)} (${lessonCount} ${lessonCount === 1 ? "lesson" : "lessons"})` : ""
+              }.`}
       </Text>
     </Sheet>
   );
@@ -846,7 +938,7 @@ function LessonPreview({
               {student?.name ?? "Removed student"}
             </Text>
             <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-              {lesson.type} · {FULL_WEEKDAYS[lesson.day]} {formatTime(lesson.start)} – {formatTime(lesson.start + lesson.duration)}
+              {lesson.type} · {isOneTimeLesson(lesson) && lesson.startDate ? formatDateKey(lesson.startDate) : FULL_WEEKDAYS[lesson.day]} {formatTime(lesson.start)} – {formatTime(lesson.start + lesson.duration)}
             </Text>
           </View>
           <IconButton icon="close" label="Close preview" onPress={onClose} size={30} />

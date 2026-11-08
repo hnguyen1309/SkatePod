@@ -6,6 +6,13 @@ import { describe, test } from "node:test";
 import {
   MAX_DAY_WIDTH,
   MAX_HOUR_HEIGHT,
+  addDaysToKey,
+  countWeeklyLessons,
+  endDateAfterLessons,
+  isOneTimeLesson,
+  moveToWeekday,
+  nextDateOnWeekday,
+  weekdayOfKey,
   calendarScale,
   colorForType,
   findClash,
@@ -315,5 +322,45 @@ describe("calendarScale: zooming the calendar", () => {
     assert.equal(scale.dayWidth, 200); // 1400 / 7
     assert.equal(scale.canZoomIn, false);
     assert.equal(scale.canZoomOut, false);
+  });
+});
+
+describe("one-time and repeating lessons", () => {
+  test("day keys: add days, weekday, next date on a weekday", () => {
+    assert.equal(addDaysToKey("2026-11-28", 7), "2026-12-05");
+    assert.equal(addDaysToKey("2026-03-01", -1), "2026-02-28");
+    assert.equal(weekdayOfKey("2026-11-08"), 6); // a Sunday
+    assert.equal(weekdayOfKey("2026-11-09"), 0); // a Monday
+    assert.equal(nextDateOnWeekday("2026-11-08", 1), "2026-11-10"); // Sunday → the coming Tuesday
+    assert.equal(nextDateOnWeekday("2026-11-10", 1), "2026-11-10"); // already a Tuesday
+  });
+
+  test("a lesson that starts and ends on the same day is one-time", () => {
+    assert.equal(isOneTimeLesson({ startDate: "2026-11-10", endDate: "2026-11-10" }), true);
+    assert.equal(isOneTimeLesson({ startDate: "2026-11-10", endDate: "2026-11-17" }), false);
+    assert.equal(isOneTimeLesson({ startDate: "2026-11-10" }), false);
+    assert.equal(isOneTimeLesson({}), false);
+  });
+
+  test("a one-time lesson only runs on its date", () => {
+    const lesson = { day: 1, start: 600, startDate: "2026-11-10", endDate: "2026-11-10" };
+    assert.equal(nextLessonTime(lesson, new Date(2026, 10, 8))?.getDate(), 10);
+    assert.equal(nextLessonTime(lesson, new Date(2026, 10, 11)), null);
+  });
+
+  test("after X lessons: the end date is the last lesson's date, and counting gives X back", () => {
+    assert.equal(endDateAfterLessons("2026-11-10", 1), "2026-11-10");
+    assert.equal(endDateAfterLessons("2026-11-10", 4), "2026-12-01");
+    assert.equal(countWeeklyLessons("2026-11-10", "2026-12-01"), 4);
+    assert.equal(countWeeklyLessons("2026-11-10", "2026-12-03"), 4);
+    assert.equal(countWeeklyLessons("2026-11-10", "2026-11-09"), 0);
+  });
+
+  test("moving a one-time lesson to another weekday moves its date within the same week", () => {
+    const oneTime = { day: 1, startDate: "2026-11-10", endDate: "2026-11-10" };
+    assert.deepEqual(moveToWeekday(oneTime, 3), { day: 3, startDate: "2026-11-12", endDate: "2026-11-12" });
+    assert.deepEqual(moveToWeekday(oneTime, 0), { day: 0, startDate: "2026-11-09", endDate: "2026-11-09" });
+    const weekly = { day: 1, startDate: "2026-11-10" };
+    assert.deepEqual(moveToWeekday(weekly, 3), { day: 3, startDate: "2026-11-10" });
   });
 });
