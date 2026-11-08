@@ -8,7 +8,7 @@
 //
 // Every call prints one line in the Expo terminal while developing, e.g. "→ POST /students 201 (14 ms)",
 // to match the line the backend prints when it receives it.
-import { studentFromApi, studentToApi, type ApiStudent, type Student } from "./data";
+import { lessonFromApi, lessonToApi, studentFromApi, studentToApi, type ApiLesson, type ApiStudent, type Lesson, type Student } from "./data";
 
 export const API_URL: string | null = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || null;
 
@@ -72,6 +72,25 @@ export async function updateStudent(student: Student): Promise<Student> {
 
 export async function deleteStudent(id: string): Promise<void> {
   await request<void>("DELETE", `/students/${id}`);
+}
+
+export async function listLessons(): Promise<Lesson[]> {
+  const lessons = await request<ApiLesson[]>("GET", "/lessons");
+  return lessons.map(lessonFromApi);
+}
+
+// The backend checks double booking (409) and that a new lesson starts today at the earliest (400),
+// the same rules the lesson editor checks; its message ends up in the alert if it says no.
+export async function createLesson(lesson: Lesson): Promise<Lesson> {
+  return lessonFromApi(await request<ApiLesson>("POST", "/lessons", lessonToApi(lesson)));
+}
+
+export async function updateLesson(lesson: Lesson): Promise<Lesson> {
+  return lessonFromApi(await request<ApiLesson>("PUT", `/lessons/${lesson.id}`, lessonToApi(lesson)));
+}
+
+export async function deleteLesson(id: string): Promise<void> {
+  await request<void>("DELETE", `/lessons/${id}`);
 }
 
 /** For the Test connection button: how many students the backend has, and how long it took. */

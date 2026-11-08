@@ -44,7 +44,7 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, saveStudent, deleteStudent, studentsError, reloadStudents, lessons, availability, notes, programs } = useStore();
+  const { students, saveStudent, deleteStudent, backendError, reloadFromBackend, lessons, availability, notes, programs } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -98,11 +98,11 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
     <Screen>
       <Heading description="Keep every skater’s training, goals, and upcoming work in one place." eyebrow="Student management" title="Students" />
 
-      {studentsError ? (
+      {backendError ? (
         <Card style={{ marginBottom: 16, borderColor: colors.danger }}>
-          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Couldn’t load students</Text>
-          <Text style={{ fontSize: 13, color: colors.subtle, marginTop: 4, marginBottom: 12 }}>{studentsError}</Text>
-          <Button label="Try again" onPress={() => reloadStudents()} variant="secondary" />
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Couldn’t load from the backend</Text>
+          <Text style={{ fontSize: 13, color: colors.subtle, marginTop: 4, marginBottom: 12 }}>{backendError}</Text>
+          <Button label="Try again" onPress={() => reloadFromBackend()} variant="secondary" />
         </Card>
       ) : null}
 

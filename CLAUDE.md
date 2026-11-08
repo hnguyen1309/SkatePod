@@ -20,7 +20,7 @@ SkatePod is a coach-first iPhone app for figure skating coaches: students, a wee
 | `docs/media/` | Demo GIF used in the README. |
 | `.github/workflows/ci.yml` | CI on every push and PR: mobile `npm ci`, `tsc`, `npm test` (Node 22); backend `./mvnw -B test` (Java 21). |
 
-**The app and the backend are being connected, one feature at a time.** Students go through the API when `mobile/.env` sets `EXPO_PUBLIC_API_URL`; everything else is still kept on the phone (AsyncStorage). Since backend V6 the backend's model matches the app's; the differences left are under "Model gaps".
+**The app and the backend are being connected, one feature at a time.** Students and weekly lessons go through the API when `mobile/.env` sets `EXPO_PUBLIC_API_URL`; everything else is still kept on the phone (AsyncStorage). Since backend V6 the backend's model matches the app's; the differences left are under "Model gaps".
 
 ## Commands
 
@@ -51,7 +51,7 @@ sh run-ui-tests.sh [.maestro/NN-flow.yaml]        # Maestro UI suite on the iOS 
 
 **Shell and navigation.** `App.tsx` holds the header, "Add" button, bottom tabs (Dashboard, Students, Calendar, Programs, Lessons, Settings) and switches screens with `useState`; no navigation library. Cross-screen requests go through `navigate(tab, intent)` with a one-time `Intent` from `src/navigation.ts` (`add`, `openStudent`, `newNote`, `openNote`, `filterNotes`); the target screen acts on it, then calls `onIntentHandled()`. Notes opened from another screen go back there on close (`returnTo`).
 
-**State.** `src/store.tsx` (`useStore()`) holds everything, each saved with `usePersistentState` (`src/storage.ts`) under AsyncStorage keys `skatepod.students.v2`, `.lessons.v1`, `.notes.v1`, `.programs.v1`, `.settings.v1`, `.availability.v1`, `.historyCheckedAt.v1`. If a stored shape changes, bump the key or upgrade old data on load (lessons use `upgradeLesson`). **Students can live on the backend:** when `EXPO_PUBLIC_API_URL` is set in `mobile/.env` (see `.env.example`), the store loads them with `src/api.ts` and `saveStudent`/`deleteStudent` send POST/PUT/DELETE (`studentsSource: "backend"`); without it, everything stays on the phone as before (Maestro and CI run that way). `api.ts` logs one line per call in development (`→ POST /students 201 (14 ms)`). The JSON mapping (`studentFromApi`, `studentToApi`, `defaultTrackFor`, `toneFor`) is in `data.ts`. Next to move: lessons, then notes, programs, availability.
+**State.** `src/store.tsx` (`useStore()`) holds everything, each saved with `usePersistentState` (`src/storage.ts`) under AsyncStorage keys `skatepod.students.v2`, `.lessons.v1`, `.notes.v1`, `.programs.v1`, `.settings.v1`, `.availability.v1`, `.historyCheckedAt.v1`. If a stored shape changes, bump the key or upgrade old data on load (lessons use `upgradeLesson`). **Students and lessons can live on the backend:** when `EXPO_PUBLIC_API_URL` is set in `mobile/.env` (see `.env.example`), the store loads both with `src/api.ts` (`reloadFromBackend`, errors in `backendError`) and `saveStudent`/`deleteStudent`/`saveLesson`/`deleteLesson` send POST/PUT/DELETE (`source: "backend"`); without it, everything stays on the phone as before (Maestro and CI run that way). Screens never set students or lessons directly: they call those functions, which resolve to false/null after an alert if the backend says no. A new lesson or student gets its id from the backend. Moving a lesson shows straight away and goes back if the PUT fails. `api.ts` logs one line per call in development (`→ POST /students 201 (14 ms)`). The JSON mapping (`studentFromApi`, `studentToApi`, `defaultTrackFor`, `toneFor`, `lessonFromApi`, `lessonToApi`) is in `data.ts`. Next to move: notes, then programs, availability.
 
 **Where things live.**
 - `src/data.ts`: types, sample data, catalogs and **all business rules as plain functions** (so they're testable). Tests are in `src/data.test.ts`.
@@ -112,7 +112,7 @@ Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 ## Model gaps (for when the app connects to the backend)
 
 The backend matches the app's model since V6. What's left to map in the app:
-- **Names and units:** lessons use `dayOfWeek` ("MONDAY") and `startTime` ("09:30") instead of `day` (0 = Monday) and `start` (minutes). Notes use `durationMinutes` (60) instead of `duration` ("60 minutes"). Programs send element codes only. Colors are uppercase.
+- **Names and units:** lessons use `dayOfWeek` ("MONDAY") and `startTime` ("09:30") instead of `day` (0 = Monday) and `start` (minutes); `lessonFromApi`/`lessonToApi` convert. Notes use `durationMinutes` (60) instead of `duration` ("60 minutes"). Programs send element codes only. Colors are uppercase.
 - **Track:** the app keeps each discipline's `track` from the backend (hidden on the profile) and gives new disciplines `defaultTrackFor`.
 - **Not in the backend:** student `tone` (avatar color the app assigns), settings, and `syncLessonNote` (when a lesson changes, the app should PUT its note too).
 - **IDs:** the backend makes UUIDs; the app's are short random strings, so data already on a phone needs new ids when uploaded.

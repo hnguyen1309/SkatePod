@@ -7,6 +7,10 @@ import {
   TONES,
   defaultTrackFor,
   studentFromApi,
+  apiTimeFromMinutes,
+  lessonFromApi,
+  lessonToApi,
+  minutesFromApiTime,
   studentToApi,
   toneFor,
   MAX_DAY_WIDTH,
@@ -362,6 +366,55 @@ describe("students on the backend", () => {
         { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
         { discipline: "ADULT_SKILLS", track: "ADULT", level: "Adult Bronze" },
       ],
+    });
+  });
+});
+
+describe("lessons on the backend", () => {
+  test("turns the backend's times into minutes and back", () => {
+    assert.equal(minutesFromApiTime("09:30"), 570);
+    assert.equal(minutesFromApiTime("06:32:00"), 392);
+    assert.equal(apiTimeFromMinutes(570), "09:30");
+    assert.equal(apiTimeFromMinutes(392), "06:32");
+    assert.equal(apiTimeFromMinutes(21 * 60 + 5), "21:05");
+  });
+
+  test("turns the backend's lesson into the app's, with the color from the type", () => {
+    const lesson = lessonFromApi({
+      id: "l1",
+      studentId: "s1",
+      dayOfWeek: "TUESDAY",
+      startTime: "09:30:00",
+      durationMinutes: 45,
+      type: "Off-ice",
+      startDate: "2026-11-10",
+      endDate: null,
+      createdAt: "2026-11-07T10:00:00Z",
+    });
+    assert.deepEqual(lesson, {
+      id: "l1",
+      studentId: "s1",
+      day: 1,
+      start: 570,
+      duration: 45,
+      type: "Off-ice",
+      color: "purple",
+      createdAt: "2026-11-07T10:00:00Z",
+      startDate: "2026-11-10",
+      endDate: undefined,
+    });
+  });
+
+  test("sends day names and times, and null for missing dates", () => {
+    const body = lessonToApi({ id: "l1", studentId: "s1", day: 6, start: 1020, duration: 60, type: "Public", color: "sand" });
+    assert.deepEqual(body, {
+      studentId: "s1",
+      dayOfWeek: "SUNDAY",
+      startTime: "17:00",
+      durationMinutes: 60,
+      type: "Public",
+      startDate: null,
+      endDate: null,
     });
   });
 });

@@ -65,7 +65,7 @@ function fingerDistance(event: GestureResponderEvent) {
 }
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { lessons, setLessons, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
+  const { lessons, saveLesson: storeLesson, deleteLesson, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
@@ -93,11 +93,14 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
     return date;
   }
 
-  // Saves a changed lesson. If a note was already written for it this week, the note follows the change
-  // (type, length, day and time), so the coach doesn't end up with a note that says the old details.
-  function saveLesson(before: Lesson, after: Lesson) {
-    setLessons((current) => current.map((item) => (item.id === before.id ? after : item)));
-    setNotes((current) => syncLessonNote(current, before, after, dateOf(before), dateOf(after)));
+  // Saves a changed lesson (on the backend when it's set up). If a note was already written for it this
+  // week, the note follows the change (type, length, day and time), so the coach doesn't end up with a
+  // note that says the old details. Resolves to false if the backend refused the change.
+  async function saveLesson(before: Lesson, after: Lesson) {
+    const saved = await storeLesson(after);
+    if (!saved) return false;
+    setNotes((current) => syncLessonNote(current, before, saved, dateOf(before), dateOf(saved)));
+    return true;
   }
 
 
@@ -261,8 +264,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setLessons((current) => current.filter((item) => item.id !== lesson.id));
+        onPress: async () => {
+          if (!(await deleteLesson(lesson.id))) return;
           setSelectedId(null);
           setDetailId(null);
         },
@@ -588,8 +591,9 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           initial={editing}
           lessons={lessons}
           onClose={() => setEditingId(null)}
-          onSave={(lesson) => {
-            saveLesson(editing, lesson);
+          onSave={async (lesson) => {
+            // If the backend says no, the editor stays open so the coach can change the time.
+            if (!(await saveLesson(editing, lesson))) return;
             setEditingId(null); // saved: back to the calendar, with the lesson's preview still open
           }}
           students={students.map((student) => ({ id: student.id, name: student.name }))}
@@ -608,9 +612,10 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
             setEditorOpen(false);
             setTapped(null);
           }}
-          onSave={(lesson) => {
-            setLessons((current) => [...current, lesson]);
-            setSelectedId(lesson.id);
+          onSave={async (lesson) => {
+            const saved = await storeLesson(lesson);
+            if (!saved) return;
+            setSelectedId(saved.id); // the backend gives a new lesson its own id
             setEditorOpen(false);
             setTapped(null);
           }}
@@ -672,7 +677,7 @@ function LessonEditor({
   defaultDuration: number;
   initial?: Lesson; // set when editing an existing lesson; the form starts with its values
   onClose: () => void;
-  onSave: (lesson: Lesson) => void;
+  onSave: (lesson: Lesson) => void | Promise<void>; // may wait for the backend
 }) {
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(initial?.studentId ?? studentIds[0] ?? "");
@@ -683,6 +688,8 @@ function LessonEditor({
   const [duration, setDuration] = useState(defaultDuration);
   const [durationText, setDurationText] = useState(String(defaultDuration));
   const [type, setType] = useState(initial?.type ?? LESSON_TYPES[0]);
+  // True while the backend is saving, so a second tap doesn't add the lesson twice.
+  const [saving, setSaving] = useState(false);
   const end = start + duration;
   // A weekly lesson runs from its start date (today at the earliest) until its end date, or forever.
   // Lessons saved before start dates existed have none ("Already running") until the coach picks one.
@@ -697,7 +704,8 @@ function LessonEditor({
   }
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? id;
 
-  function submit() {
+  async function submit() {
+    if (saving) return;
     if (!studentId) {
       Alert.alert("Add a student first", "Lessons need a student. Add one on the Students tab.");
       return;
@@ -730,7 +738,12 @@ function LessonEditor({
       );
       return;
     }
-    onSave(lesson);
+    setSaving(true);
+    try {
+      await onSave(lesson);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -738,7 +751,7 @@ function LessonEditor({
       footer={
         <>
           <Button label="Cancel" onPress={onClose} style={{ flex: 1 }} variant="secondary" />
-          <Button label={initial ? "Save changes" : "Schedule lesson"} onPress={submit} style={{ flex: 1.5 }} />
+          <Button disabled={saving} label={initial ? "Save changes" : "Schedule lesson"} onPress={submit} style={{ flex: 1.5 }} />
         </>
       }
       onClose={onClose}

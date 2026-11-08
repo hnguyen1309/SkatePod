@@ -10,7 +10,7 @@ import { colors } from "../theme";
 const LENGTHS = ["30", "45", "60"] as const;
 
 export function SettingsScreen(_props: ScreenProps) {
-  const { settings, setSettings, students, studentsSource, reloadStudents, lessons, notes, programs, resetSampleData } = useStore();
+  const { settings, setSettings, students, source, reloadFromBackend, lessons, notes, programs, resetSampleData } = useStore();
   const [checking, setChecking] = useState(false);
   const [draft, setDraft] = useState(settings);
   const [saved, setSaved] = useState(false);
@@ -35,7 +35,7 @@ export function SettingsScreen(_props: ScreenProps) {
     try {
       const result = await api.checkConnection();
       Alert.alert("Connected", `The backend answered in ${result.millis} ms and has ${result.students} students.`);
-      reloadStudents();
+      reloadFromBackend();
     } catch (error) {
       Alert.alert("Not connected", error instanceof Error ? error.message : String(error));
     } finally {
@@ -110,8 +110,8 @@ export function SettingsScreen(_props: ScreenProps) {
       <Card style={{ marginBottom: 16 }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Your data</Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
-          {studentsSource === "backend"
-            ? "Lessons, notes, programs and settings are stored on this phone (students are on the backend). Export a backup."
+          {source === "backend"
+            ? "Students and weekly lessons are on the backend. Notes, programs and settings are stored on this phone. Export a backup."
             : "Everything is stored on this phone. Export a backup of students, lessons, notes, and programs."}
         </Text>
         <View style={{ gap: 10 }}>

@@ -67,7 +67,7 @@ mobile/
   App.tsx              header, bottom tabs, screen switching
   index.ts             app entry point
   src/data.ts          types, sample data, skating element catalog
-  src/store.tsx        shared app data, saved on the phone (students on the backend when .env is set)
+  src/store.tsx        shared app data, saved on the phone (students and lessons on the backend when .env is set)
   src/api.ts           calls to the backend; set its address in .env (see .env.example)
   src/components/      icons, buttons, fields, sheets, rink drawing
   src/screens/         one file per tab
@@ -75,6 +75,6 @@ mobile/
 
 ## Known limits
 
-- Only students can live on the backend so far (set `EXPO_PUBLIC_API_URL` in `.env`, see RUNNING.md). Lessons, notes and programs are still saved on the phone only.
+- Only students and weekly lessons can live on the backend so far (set `EXPO_PUBLIC_API_URL` in `.env`, see RUNNING.md). Notes, programs and availability are still saved on the phone only.
 - “Share” sends the note as text through the iPhone share sheet. A real read-only link comes with the backend.
 - The skating element rules are a sample catalog. Always check the current rulebook.

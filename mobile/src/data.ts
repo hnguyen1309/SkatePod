@@ -441,6 +441,78 @@ export function studentToApi(student: Pick<Student, "name" | "disciplines">): Ap
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Weekly lessons on the backend. The backend counts days by name ("MONDAY") and times as "09:30",
+// the app counts days from 0 (Monday) and times in minutes after midnight (570), so these convert.
+
+export const API_WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+export type ApiWeekday = (typeof API_WEEKDAYS)[number];
+
+/** A lesson as the backend sends it (GET /api/lessons). Only the fields the app uses. */
+export type ApiLesson = {
+  id: string;
+  studentId: string;
+  dayOfWeek: ApiWeekday;
+  startTime: string; // "09:30" (the backend may add seconds: "09:30:00")
+  durationMinutes: number;
+  type: string;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string | null;
+};
+
+/** What the backend expects for POST and PUT /api/lessons. */
+export type ApiLessonRequest = {
+  studentId: string;
+  dayOfWeek: ApiWeekday;
+  startTime: string;
+  durationMinutes: number;
+  type: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+/** "09:30" or "09:30:00" → 570. */
+export function minutesFromApiTime(time: string) {
+  const [hours, minutes] = time.split(":").map((part) => Number.parseInt(part, 10));
+  return hours * 60 + (minutes || 0);
+}
+
+/** 570 → "09:30". */
+export function apiTimeFromMinutes(minutes: number) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+export function lessonFromApi(lesson: ApiLesson): Lesson {
+  return {
+    id: lesson.id,
+    studentId: lesson.studentId,
+    day: API_WEEKDAYS.indexOf(lesson.dayOfWeek),
+    start: minutesFromApiTime(lesson.startTime),
+    duration: lesson.durationMinutes,
+    type: lesson.type,
+    // The backend sends the color too ("TEAL"), but it always follows the type, so the app works it out.
+    color: colorForType(lesson.type),
+    createdAt: lesson.createdAt ?? undefined,
+    startDate: lesson.startDate ?? undefined,
+    endDate: lesson.endDate ?? undefined,
+  };
+}
+
+/** The body for POST/PUT /api/lessons. The color isn't sent: the backend picks it from the type. */
+export function lessonToApi(lesson: Lesson): ApiLessonRequest {
+  return {
+    studentId: lesson.studentId,
+    dayOfWeek: API_WEEKDAYS[lesson.day],
+    startTime: apiTimeFromMinutes(lesson.start),
+    durationMinutes: lesson.duration,
+    type: lesson.type,
+    startDate: lesson.startDate ?? null,
+    endDate: lesson.endDate ?? null,
+  };
+}
+
 export function newId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
