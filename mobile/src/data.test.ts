@@ -10,6 +10,9 @@ import {
   apiTimeFromMinutes,
   lessonFromApi,
   lessonToApi,
+  minutesFromDuration,
+  noteFromApi,
+  noteToApi,
   minutesFromApiTime,
   studentToApi,
   toneFor,
@@ -416,5 +419,68 @@ describe("lessons on the backend", () => {
       startDate: null,
       endDate: null,
     });
+  });
+});
+
+describe("notes on the backend", () => {
+  test("reads the minutes out of the app's length text", () => {
+    assert.equal(minutesFromDuration("45 minutes"), 45);
+    assert.equal(minutesFromDuration("60"), 60);
+    assert.equal(minutesFromDuration(""), 60);
+  });
+
+  test("turns the backend's note into the app's, with empty text for missing fields", () => {
+    const note = noteFromApi({
+      id: "n1",
+      studentId: "s1",
+      lessonId: null,
+      date: "2026-11-07T15:00:00Z",
+      title: "Freestyle lesson",
+      lessonType: "Freestyle",
+      durationMinutes: 45,
+      overall: null,
+      focus: null,
+      observations: "Clean axel",
+      nextSteps: null,
+      skills: null,
+      shared: false,
+    });
+    assert.deepEqual(note, {
+      id: "n1",
+      studentId: "s1",
+      lessonId: undefined,
+      date: "2026-11-07T15:00:00.000Z",
+      title: "Freestyle lesson",
+      lessonType: "Freestyle",
+      duration: "45 minutes",
+      overall: "",
+      focus: "",
+      observations: "Clean axel",
+      nextSteps: "",
+      skills: [],
+      shared: false,
+    });
+  });
+
+  test("sends the length in minutes and null for a note without a lesson", () => {
+    const body = noteToApi({
+      id: "n1",
+      studentId: "s1",
+      date: "2026-11-07T15:00:00.000Z",
+      title: "Public lesson",
+      lessonType: "Public",
+      duration: "30 minutes",
+      overall: "Steady",
+      focus: "Edges",
+      observations: "",
+      nextSteps: "",
+      skills: ["Waltz jump"],
+      shared: true,
+    });
+    assert.equal(body.durationMinutes, 30);
+    assert.equal(body.lessonId, null);
+    assert.equal(body.overall, "Steady");
+    assert.deepEqual(body.skills, ["Waltz jump"]);
+    assert.equal("id" in body, false);
   });
 });

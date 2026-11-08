@@ -65,7 +65,7 @@ function fingerDistance(event: GestureResponderEvent) {
 }
 
 export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { lessons, saveLesson: storeLesson, deleteLesson, availability, setAvailability, notes, setNotes, students, studentById, settings } = useStore();
+  const { lessons, saveLesson: storeLesson, deleteLesson, availability, setAvailability, notes, saveNote, students, studentById, settings } = useStore();
   const [mode, setMode] = useState<Mode>("Week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState(todayIndex());
@@ -95,11 +95,14 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   // Saves a changed lesson (on the backend when it's set up). If a note was already written for it this
   // week, the note follows the change (type, length, day and time), so the coach doesn't end up with a
-  // note that says the old details. Resolves to false if the backend refused the change.
+  // note that says the old details. The backend doesn't do that itself, so the note is saved too.
+  // Resolves to false if the backend refused the lesson change.
   async function saveLesson(before: Lesson, after: Lesson) {
     const saved = await storeLesson(after);
     if (!saved) return false;
-    setNotes((current) => syncLessonNote(current, before, saved, dateOf(before), dateOf(saved)));
+    const note = findLessonNote(notes, before, dateOf(before));
+    const followed = note && syncLessonNote(notes, before, saved, dateOf(before), dateOf(saved)).find((item) => item.id === note.id);
+    if (followed) await saveNote(followed);
     return true;
   }
 

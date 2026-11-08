@@ -513,6 +513,73 @@ export function lessonToApi(lesson: Lesson): ApiLessonRequest {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Training history notes on the backend. The backend keeps the length as a number of minutes (60)
+// where the app shows text ("60 minutes"), and sends null for fields nobody filled in.
+
+/** A note as the backend sends it (GET /api/notes). Only the fields the app uses. */
+export type ApiNote = {
+  id: string;
+  studentId: string;
+  lessonId: string | null;
+  date: string; // an instant, e.g. "2026-11-07T15:00:00Z"
+  title: string;
+  lessonType: string;
+  durationMinutes: number;
+  overall: string | null;
+  focus: string | null;
+  observations: string | null;
+  nextSteps: string | null;
+  skills: string[] | null;
+  shared: boolean;
+};
+
+/** What the backend expects for POST and PUT /api/notes. */
+export type ApiNoteRequest = Omit<ApiNote, "id">;
+
+/** "60 minutes" → 60. Falls back to 60 if there's no number in it. */
+export function minutesFromDuration(duration: string) {
+  const minutes = Number.parseInt(duration, 10);
+  return minutes > 0 ? minutes : 60;
+}
+
+export function noteFromApi(note: ApiNote): Note {
+  return {
+    id: note.id,
+    studentId: note.studentId,
+    lessonId: note.lessonId ?? undefined,
+    // Written the same way as the app's own dates ("...T15:00:00.000Z"), so sorting by text still works.
+    date: new Date(note.date).toISOString(),
+    title: note.title,
+    lessonType: note.lessonType,
+    duration: `${note.durationMinutes} minutes`,
+    overall: note.overall ?? "",
+    focus: note.focus ?? "",
+    observations: note.observations ?? "",
+    nextSteps: note.nextSteps ?? "",
+    skills: note.skills ?? [],
+    shared: note.shared,
+  };
+}
+
+/** The body for POST/PUT /api/notes. */
+export function noteToApi(note: Note): ApiNoteRequest {
+  return {
+    studentId: note.studentId,
+    lessonId: note.lessonId ?? null,
+    date: note.date,
+    title: note.title,
+    lessonType: note.lessonType,
+    durationMinutes: minutesFromDuration(note.duration),
+    overall: note.overall,
+    focus: note.focus,
+    observations: note.observations,
+    nextSteps: note.nextSteps,
+    skills: note.skills,
+    shared: note.shared,
+  };
+}
+
 export function newId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }

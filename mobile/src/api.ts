@@ -8,7 +8,20 @@
 //
 // Every call prints one line in the Expo terminal while developing, e.g. "→ POST /students 201 (14 ms)",
 // to match the line the backend prints when it receives it.
-import { lessonFromApi, lessonToApi, studentFromApi, studentToApi, type ApiLesson, type ApiStudent, type Lesson, type Student } from "./data";
+import {
+  lessonFromApi,
+  lessonToApi,
+  noteFromApi,
+  noteToApi,
+  studentFromApi,
+  studentToApi,
+  type ApiLesson,
+  type ApiNote,
+  type ApiStudent,
+  type Lesson,
+  type Note,
+  type Student,
+} from "./data";
 
 export const API_URL: string | null = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || null;
 
@@ -91,6 +104,26 @@ export async function updateLesson(lesson: Lesson): Promise<Lesson> {
 
 export async function deleteLesson(id: string): Promise<void> {
   await request<void>("DELETE", `/lessons/${id}`);
+}
+
+// The training history. Each GET also brings it up to date on the backend: every lesson that has
+// started since the last check gets an empty note (NoteService.catchUpHistory), so the app doesn't
+// work that out itself when it's on the backend.
+export async function listNotes(): Promise<Note[]> {
+  const notes = await request<ApiNote[]>("GET", "/notes");
+  return notes.map(noteFromApi);
+}
+
+export async function createNote(note: Note): Promise<Note> {
+  return noteFromApi(await request<ApiNote>("POST", "/notes", noteToApi(note)));
+}
+
+export async function updateNote(note: Note): Promise<Note> {
+  return noteFromApi(await request<ApiNote>("PUT", `/notes/${note.id}`, noteToApi(note)));
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  await request<void>("DELETE", `/notes/${id}`);
 }
 
 /** For the Test connection button: how many students the backend has, and how long it took. */

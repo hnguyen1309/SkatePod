@@ -111,7 +111,7 @@ export function SettingsScreen(_props: ScreenProps) {
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Your data</Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
           {source === "backend"
-            ? "Students and weekly lessons are on the backend. Notes, programs and settings are stored on this phone. Export a backup."
+            ? "Students, lessons and notes are on the backend. Programs, availability and settings are stored on this phone. Export a backup."
             : "Everything is stored on this phone. Export a backup of students, lessons, notes, and programs."}
         </Text>
         <View style={{ gap: 10 }}>
