@@ -97,6 +97,8 @@ Errors come back as JSON "problem details": **400** for invalid input, **404** f
 
 **Postman.** `postman/SkatePod-API.postman_collection.json` has every request above with checks. In Postman: Import → that file → Run collection. It creates a test student, tries everything, and deletes what it made.
 
+**Request log.** Every call to the API prints one line in the terminal where the backend runs, for example `POST /api/students → 201 (14 ms)`. Use it to check that a request from the app or Postman arrived. Only the method, path, status and time are logged, never what was sent.
+
 ## How the code is organized
 
 ```
