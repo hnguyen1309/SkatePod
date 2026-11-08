@@ -35,7 +35,7 @@ class NextLessonCalculatorTest {
     private static final LocalDateTime WEDNESDAY_NOON = WEDNESDAY.atTime(12, 0);
 
     private final NextLessonCalculator calculator = new NextLessonCalculator();
-    private final Student emma = new Student("Emma", null, 50, List.of());
+    private final Student emma = new Student("Emma", List.of());
 
     private Lesson lesson(LocalDate date, int hour) {
         return new Lesson(emma, date, LocalTime.of(hour, 0), 45, "Freestyle", LessonColor.TEAL);

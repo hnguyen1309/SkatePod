@@ -36,7 +36,7 @@ class LessonServiceTest {
     private LessonService service;
     private static final LocalDate MONDAY = LocalDate.of(2026, 10, 26);
 
-    private final Student emma = new Student("Emma", null, 50, List.of());
+    private final Student emma = new Student("Emma", List.of());
 
     @BeforeEach
     void setUp() {
@@ -71,7 +71,7 @@ class LessonServiceTest {
     @Test
     void createOverlappingAnotherLessonThrowsConflictAndSavesNothing() {
         UUID studentId = UUID.randomUUID();
-        Student lily = new Student("Lily", null, 40, List.of());
+        Student lily = new Student("Lily", List.of());
         when(students.findById(studentId)).thenReturn(Optional.of(emma));
         // Lily already skates 9:00-9:45 that day, so Emma at 9:30 clashes.
         when(lessons.findAllByDate(MONDAY)).thenReturn(List.of(

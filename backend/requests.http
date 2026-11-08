@@ -19,21 +19,21 @@ Content-Type: application/json
 
 {
   "name": "Mai",
-  "focus": "Waltz jump",
-  "progress": 20,
   "disciplines": [
-    { "discipline": "ADULT_FREESKATE", "level": "Adult Bronze" },
-    { "discipline": "PATTERN_DANCE", "level": "Bronze" }
+    { "discipline": "ADULT_FREESKATE", "track": "ADULT", "level": "Adult Bronze" },
+    { "discipline": "PATTERN_DANCE", "track": "ADULT", "level": "Bronze" }
   ]
 }
 
-### Validation error example (blank name, progress over 100) → 400
+### Validation error example (blank name, discipline without a track) → 400
 POST {{baseUrl}}/students
 Content-Type: application/json
 
 {
   "name": "",
-  "progress": 150
+  "disciplines": [
+    { "discipline": "STANDARD_FREESKATE", "level": "Bronze" }
+  ]
 }
 
 ### Level from another discipline → 400 (Juvenile isn't a Standard Freeskate level)
@@ -42,9 +42,8 @@ Content-Type: application/json
 
 {
   "name": "Mai",
-  "progress": 20,
   "disciplines": [
-    { "discipline": "STANDARD_FREESKATE", "level": "Juvenile" }
+    { "discipline": "STANDARD_FREESKATE", "track": "CHAMPIONSHIP", "level": "Juvenile" }
   ]
 }
 
@@ -54,11 +53,9 @@ Content-Type: application/json
 
 {
   "name": "Emma Miller",
-  "focus": "Double flip",
-  "progress": 80,
   "disciplines": [
-    { "discipline": "STANDARD_FREESKATE", "level": "Gold" },
-    { "discipline": "STANDARD_SKILLS", "level": "Gold" }
+    { "discipline": "STANDARD_FREESKATE", "track": "EXCEL", "level": "Gold" },
+    { "discipline": "STANDARD_SKILLS", "track": "CHAMPIONSHIP", "level": "Gold" }
   ]
 }
 

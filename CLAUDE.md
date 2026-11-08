@@ -87,7 +87,7 @@ Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 - **Errors:** `NotFoundException` (404), `BadRequestException` (400), `ConflictException` (409), turned into `ProblemDetail` by `ApiExceptionHandler`.
 - **Time:** inject the `Clock` bean and use `now(clock)`; tests use `Clock.fixed(...)`.
 - **Disciplines:** catalog in code (`student/Discipline.java`), served at `GET /api/disciplines`; stored per student in `student_disciplines`.
-- **Database:** Flyway owns the schema (`ddl-auto: validate`). Never edit an applied migration; add the next `V5__...sql`. Sample data `db/sample/V1000__sample_data.sql` loads only in the `dev` profile; after adding a migration, reset the dev DB (it sorts before V1000). Deleting a student cascades to their lessons. Production config: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `PORT`.
+- **Database:** Flyway owns the schema (`ddl-auto: validate`). Never edit an applied migration; add the next `V6__...sql`. Sample data `db/sample/V1000__sample_data.sql` loads only in the `dev` profile; after adding a migration, reset the dev DB (it sorts before V1000). Deleting a student cascades to their lessons. Production config: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `PORT`.
 - **Tests:** plain JUnit 5 + AssertJ + Mockito with mocked repositories, no Spring context or DB. Descriptive names or `@DisplayName`.
 
 ## Rules that live in two or more places (change together)
@@ -95,6 +95,7 @@ Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 | Rule | Backend | Mobile (`data.ts`) |
 | --- | --- | --- |
 | Discipline catalog | `student/Discipline.java` | `DISCIPLINES` |
+| Tracks: Championship, Excel, Adult | `student/Track.java` | `TRACK_LEVELS` keys |
 | Lesson types: Public, Freestyle, Off-ice | `@Pattern` in `LessonRequest` + CHECK in migration V3 | `LESSON_TYPES` |
 | No double booking (overlap blocked, back-to-back fine, any student) | `LessonService.checkTimeIsFree` (409) | `findClash` (also checks date ranges; `CalendarScreen` alerts) |
 | Next lesson = earliest start at or after now | `NextLessonCalculator.findNext` | `findNextLesson` / `nextLessonTime` |
@@ -103,7 +104,7 @@ Package by feature under `com.skatepod.api`: `student/`, `lesson/`, `common/`.
 ## Model gaps (for when the app connects to the backend)
 
 - Backend lessons are dated one-offs (`lesson_date` + `start_time`); mobile lessons are weekly with optional start/end dates.
-- The backend student still has a `focus` column; mobile students don't.
+- Backend student disciplines have a `track` (CHAMPIONSHIP / EXCEL / ADULT, `student/Track.java`) for the Programs panel, not shown on the profile; mobile students don't have one yet. Focus and progress are gone from both (backend V5).
 - Mobile-only so far: notes/lesson history, programs, availability blocks, settings.
 
 ## Conventions
