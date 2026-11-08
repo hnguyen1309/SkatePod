@@ -4,6 +4,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  TONES,
+  defaultTrackFor,
+  studentFromApi,
+  studentToApi,
+  toneFor,
   MAX_DAY_WIDTH,
   MAX_HOUR_HEIGHT,
   calendarScale,
@@ -315,5 +320,48 @@ describe("calendarScale: zooming the calendar", () => {
     assert.equal(scale.dayWidth, 200); // 1400 / 7
     assert.equal(scale.canZoomIn, false);
     assert.equal(scale.canZoomOut, false);
+  });
+});
+
+describe("students on the backend", () => {
+  test("adult disciplines default to the Adult track, the rest to Championship", () => {
+    assert.equal(defaultTrackFor("ADULT_FREESKATE"), "ADULT");
+    assert.equal(defaultTrackFor("ADULT_LEARN_TO_SKATE"), "ADULT");
+    assert.equal(defaultTrackFor("STANDARD_FREESKATE"), "CHAMPIONSHIP");
+    assert.equal(defaultTrackFor("SYNCHRO"), "CHAMPIONSHIP");
+  });
+
+  test("a student always gets the same avatar color from their id", () => {
+    const id = "3f2a6c1e-0000-4000-8000-000000000001";
+    assert.deepEqual(toneFor(id), toneFor(id));
+    assert.ok(TONES.includes(toneFor(id)));
+  });
+
+  test("turns the backend's student into the app's, keeping the hidden track", () => {
+    const student = studentFromApi({
+      id: "abc",
+      name: "Lily Kim",
+      disciplines: [{ discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" }],
+    });
+    assert.equal(student.name, "Lily Kim");
+    assert.deepEqual(student.disciplines, [{ discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" }]);
+    assert.deepEqual(student.tone, toneFor("abc"));
+  });
+
+  test("sends each discipline's track, or the default one for a newly added discipline", () => {
+    const body = studentToApi({
+      name: "Lily Kim",
+      disciplines: [
+        { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
+        { discipline: "ADULT_SKILLS", level: "Adult Bronze" },
+      ],
+    });
+    assert.deepEqual(body, {
+      name: "Lily Kim",
+      disciplines: [
+        { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
+        { discipline: "ADULT_SKILLS", track: "ADULT", level: "Adult Bronze" },
+      ],
+    });
   });
 });

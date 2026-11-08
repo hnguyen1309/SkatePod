@@ -26,8 +26,17 @@ export type DisciplineId =
   | "SHOWCASE"
   | "THEATRE_ON_ICE";
 
-/** One discipline a student trains in, and their level in it. */
-export type StudentDiscipline = { discipline: DisciplineId; level: string };
+/**
+ * The track a student follows in one discipline, as the backend names it. It isn't shown on the
+ * profile; the backend uses it to start a new program on the student's own track.
+ */
+export type ApiTrack = "CHAMPIONSHIP" | "EXCEL" | "ADULT";
+
+/**
+ * One discipline a student trains in, and their level in it. `track` only comes from the backend
+ * (hidden on the profile); when it's missing, defaultTrackFor fills it in before saving.
+ */
+export type StudentDiscipline = { discipline: DisciplineId; level: string; track?: ApiTrack };
 
 export type Student = {
   id: string;
@@ -378,6 +387,59 @@ export const TONES: Tone[] = [
   { bg: "#e4eadc", fg: "#596a43" },
   { bg: "#dde8f1", fg: "#4d687e" },
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Students on the backend (when EXPO_PUBLIC_API_URL is set, see api.ts). These turn the backend's
+// student JSON into the app's Student and back, so the screens don't need to know where data lives.
+
+/** A student as the backend sends it (GET /api/students). Only the fields the app uses. */
+export type ApiStudent = {
+  id: string;
+  name: string;
+  disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
+};
+
+/** What the backend expects for POST and PUT /api/students. */
+export type ApiStudentRequest = {
+  name: string;
+  disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
+};
+
+/** The track a new discipline gets: Adult for the adult disciplines, Championship for the rest. */
+export function defaultTrackFor(discipline: DisciplineId): ApiTrack {
+  return discipline.startsWith("ADULT_") ? "ADULT" : "CHAMPIONSHIP";
+}
+
+/**
+ * The avatar color for a student. The backend doesn't store one, so it's worked out from the id:
+ * the same student always gets the same color.
+ */
+export function toneFor(id: string): Tone {
+  let sum = 0;
+  for (const char of id) sum = (sum * 31 + char.charCodeAt(0)) % 9973;
+  return TONES[sum % TONES.length];
+}
+
+export function studentFromApi(student: ApiStudent): Student {
+  return {
+    id: student.id,
+    name: student.name,
+    disciplines: student.disciplines.map(({ discipline, track, level }) => ({ discipline, track, level })),
+    tone: toneFor(student.id),
+  };
+}
+
+/** The body for POST/PUT /api/students. Keeps each discipline's track, or gives it the default one. */
+export function studentToApi(student: Pick<Student, "name" | "disciplines">): ApiStudentRequest {
+  return {
+    name: student.name,
+    disciplines: student.disciplines.map(({ discipline, track, level }) => ({
+      discipline,
+      track: track ?? defaultTrackFor(discipline),
+      level,
+    })),
+  };
+}
 
 export function newId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;

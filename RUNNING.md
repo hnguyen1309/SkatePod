@@ -69,7 +69,14 @@ npx expo start                   # scan the QR code with the iPhone camera
 My Mac and iPhone need to be on the same Wi-Fi. If the phone can't connect, use `npx expo start --tunnel`.
 Stop it with **Ctrl+C**.
 
-The app doesn't call the backend yet. It uses sample data saved on the phone.
+**Students on the backend (optional).** Without setup, the app keeps everything on the phone. To save students on the backend instead:
+
+1. Find my Mac's Wi-Fi address: **System Settings → Wi-Fi → Details** (something like `192.168.1.20`).
+2. In `mobile/`, copy `.env.example` to `.env` and put that address in it: `EXPO_PUBLIC_API_URL=http://192.168.1.20:8080/api`
+3. Start the backend (step 2), then restart Expo (`npx expo start`). Expo only reads `.env` when it starts.
+4. In the app: **Settings → Test connection**. It should say "Connected".
+
+Every tap that saves a student prints a line in both terminals: `→ POST /students 201` in the Expo terminal and `POST /api/students → 201` in the backend terminal. Lessons, notes and programs still stay on the phone, so lessons of the phone's old sample students show as "Removed student" for now. The phone has to be on the same Wi-Fi as the Mac, even with `--tunnel`. Delete `.env` (and restart Expo) to go back to phone-only.
 
 UI tests (Maestro, on the iOS Simulator): with `npx expo start` running and the app open in the Simulator (press **i**), run `sh run-ui-tests.sh` from `mobile/` in a second terminal. It resets the app to sample data. Setup steps are in `mobile/README.md`.
 

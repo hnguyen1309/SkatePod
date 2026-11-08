@@ -44,7 +44,7 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, setStudents, lessons, availability, notes, programs } = useStore();
+  const { students, saveStudent, deleteStudent, studentsError, reloadStudents, lessons, availability, notes, programs } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -74,11 +74,9 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
     setTimeout(next, 400);
   }
 
-  function save(student: Student) {
-    setStudents((current) =>
-      current.some((item) => item.id === student.id) ? current.map((item) => (item.id === student.id ? student : item)) : [...current, student],
-    );
-    setEditor(null);
+  // With the backend set up, this sends POST or PUT /api/students; the editor stays open if it fails.
+  async function save(student: Student) {
+    if (await saveStudent(student)) setEditor(null);
   }
 
   function remove(student: Student) {
@@ -87,8 +85,8 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setStudents((current) => current.filter((item) => item.id !== student.id));
+        onPress: async () => {
+          if (!(await deleteStudent(student.id))) return;
           setEditor(null);
           setDetailId(null);
         },
@@ -99,6 +97,14 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
   return (
     <Screen>
       <Heading description="Keep every skater’s training, goals, and upcoming work in one place." eyebrow="Student management" title="Students" />
+
+      {studentsError ? (
+        <Card style={{ marginBottom: 16, borderColor: colors.danger }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Couldn’t load students</Text>
+          <Text style={{ fontSize: 13, color: colors.subtle, marginTop: 4, marginBottom: 12 }}>{studentsError}</Text>
+          <Button label="Try again" onPress={() => reloadStudents()} variant="secondary" />
+        </Card>
+      ) : null}
 
       <View style={{ gap: 10, marginBottom: 16 }}>
         <SearchBar onChangeText={setQuery} placeholder="Search by student, discipline or level..." value={query} />

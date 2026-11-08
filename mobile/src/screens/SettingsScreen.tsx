@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Alert, Share, Text, View } from "react-native";
+import * as api from "../api";
 import { Button, Card, Field, Heading, PickerField, Screen, ToggleRow } from "../components/ui";
 import { SAMPLE_SETTINGS } from "../data";
 import type { ScreenProps } from "../navigation";
@@ -9,7 +10,8 @@ import { colors } from "../theme";
 const LENGTHS = ["30", "45", "60"] as const;
 
 export function SettingsScreen(_props: ScreenProps) {
-  const { settings, setSettings, students, lessons, notes, programs, resetSampleData } = useStore();
+  const { settings, setSettings, students, studentsSource, reloadStudents, lessons, notes, programs, resetSampleData } = useStore();
+  const [checking, setChecking] = useState(false);
   const [draft, setDraft] = useState(settings);
   const [saved, setSaved] = useState(false);
   const set = (changes: Partial<typeof draft>) => {
@@ -25,6 +27,20 @@ export function SettingsScreen(_props: ScreenProps) {
   function exportBackup() {
     const backup = { exportedAt: new Date().toISOString(), students, lessons, notes, programs, settings };
     Share.share({ title: "SkatePod backup", message: JSON.stringify(backup, null, 2) }).catch(() => {});
+  }
+
+  // Sends GET /api/students. The backend terminal prints a line for it, and so does the Expo terminal.
+  async function testConnection() {
+    setChecking(true);
+    try {
+      const result = await api.checkConnection();
+      Alert.alert("Connected", `The backend answered in ${result.millis} ms and has ${result.students} students.`);
+      reloadStudents();
+    } catch (error) {
+      Alert.alert("Not connected", error instanceof Error ? error.message : String(error));
+    } finally {
+      setChecking(false);
+    }
   }
 
   function reset() {
@@ -77,9 +93,26 @@ export function SettingsScreen(_props: ScreenProps) {
       </Card>
 
       <Card style={{ marginBottom: 16 }}>
+        <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Backend</Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
+          {api.API_URL
+            ? `Students are saved on the backend at ${api.API_URL}. Lessons, notes, programs and settings stay on this phone for now.`
+            : "Not set up: everything is stored on this phone. To use the backend, add EXPO_PUBLIC_API_URL to mobile/.env and restart Expo."}
+        </Text>
+        <Button
+          label={checking ? "Testing…" : "Test connection"}
+          onPress={testConnection}
+          variant="secondary"
+          disabled={!api.API_URL || checking}
+        />
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Your data</Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
-          Everything is stored on this phone. Export a backup of students, lessons, notes, and programs.
+          {studentsSource === "backend"
+            ? "Lessons, notes, programs and settings are stored on this phone (students are on the backend). Export a backup."
+            : "Everything is stored on this phone. Export a backup of students, lessons, notes, and programs."}
         </Text>
         <View style={{ gap: 10 }}>
           <Button icon="share" label="Export backup" onPress={exportBackup} variant="secondary" />
