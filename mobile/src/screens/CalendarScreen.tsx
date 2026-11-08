@@ -1182,7 +1182,9 @@ function TimeRange({
 }
 
 // The native iOS wheel (hours, minutes, AM/PM). Works in Expo Go.
-// A day picker that opens the iOS date wheel inline (a pop-up can't open over a Sheet on iOS).
+// A day picker that opens a small month calendar right under the field (a pop-up can't open over a
+// Sheet on iOS). The calendar has weekday columns, so the coach sees which day a date falls on while
+// picking it, which the old date wheel didn't show. Tap the field again to close it.
 // `minimum` stops earlier days (e.g. a weekly lesson can't start in the past). onClear adds a "Clear" link.
 function DateField({
   label,
@@ -1225,11 +1227,13 @@ function DateField({
       ) : null}
       {open ? (
         <DateTimePicker
-          display="spinner"
+          accentColor={colors.teal}
+          display="inline"
           minimumDate={minimum ? fromDateKey(minimum) : undefined}
           mode="date"
           onChange={(_event, date) => date && onChange(toDateKey(date))}
           style={{ alignSelf: "stretch" }}
+          themeVariant="light"
           value={value ? fromDateKey(value) : minimum ? fromDateKey(minimum) : new Date()}
         />
       ) : null}
