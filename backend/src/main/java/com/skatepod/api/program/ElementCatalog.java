@@ -61,8 +61,25 @@ public final class ElementCatalog {
         BY_CODE.put(code, new Element(code, title, category));
     }
 
+    /** The half loop (Euler). It only counts inside a jump combination, so it isn't in the list on its own. */
+    public static final Element HALF_LOOP = new Element("1Eu", "Single Euler", "Jump");
+
+    /**
+     * Finds an element by its code. Jump combinations work too, like in the app: 2 or 3 jumps joined by
+     * "+", e.g. "1S+1T" (a "2 Jump Combination") or "2A+1Eu+3S" (a "3 Jump Combination"). Each part has to
+     * be a jump from the catalog or the half loop (1Eu).
+     */
     public static Optional<Element> find(String code) {
-        return Optional.ofNullable(BY_CODE.get(code));
+        if (code == null) return Optional.empty();
+        if (!code.contains("+")) return Optional.ofNullable(BY_CODE.get(code));
+        String[] jumps = code.split("\\+", -1);
+        if (jumps.length < 2 || jumps.length > 3) return Optional.empty();
+        for (String jump : jumps) {
+            boolean isJump = HALF_LOOP.code().equals(jump)
+                    || (BY_CODE.containsKey(jump) && BY_CODE.get(jump).category().equals("Jump"));
+            if (!isJump) return Optional.empty();
+        }
+        return Optional.of(new Element(code, jumps.length + " Jump Combination", "Jump"));
     }
 
     public static List<Element> all() {

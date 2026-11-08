@@ -580,6 +580,88 @@ export function noteToApi(note: Note): ApiNoteRequest {
   };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Programs on the backend (one per student, at /api/students/{id}/program). The backend writes
+// tracks in capitals ("CHAMPIONSHIP") and only needs element codes, in skating order.
+
+/** A program as the backend sends it. `saved` is false for a student who has no program yet. */
+export type ApiProgram = {
+  studentId: string;
+  saved: boolean;
+  musicTitle: string;
+  artist: string | null;
+  duration: string;
+  track: ApiTrack;
+  level: string;
+  elements: { code: string; title: string; category: string }[];
+  paths: RinkPoint[][];
+  placements: RinkPlacement[];
+};
+
+/** What the backend expects for PUT /api/students/{id}/program. */
+export type ApiProgramRequest = {
+  musicTitle: string;
+  artist: string;
+  duration: string;
+  track: ApiTrack;
+  level: string;
+  elements: string[]; // codes, e.g. ["1A", "2S", "1S+1T", "StSq"]
+  paths: RinkPoint[][];
+  placements: RinkPlacement[];
+};
+
+const API_TRACKS: Record<Track, ApiTrack> = { Championship: "CHAMPIONSHIP", Excel: "EXCEL", Adult: "ADULT" };
+
+export function trackFromApi(track: ApiTrack): Track {
+  return (Object.keys(API_TRACKS) as Track[]).find((name) => API_TRACKS[name] === track) ?? "Championship";
+}
+
+export function programFromApi(program: ApiProgram): ProgramData {
+  return {
+    musicTitle: program.musicTitle,
+    artist: program.artist ?? "",
+    duration: program.duration,
+    track: trackFromApi(program.track),
+    level: program.level,
+    // Titles come from the app's own catalog when it knows the code, so they read the same as before.
+    elements: program.elements.map(
+      (element) =>
+        ELEMENT_CATALOG.find((item) => item.code === element.code) ?? {
+          code: element.code,
+          title: element.title,
+          category: element.category as ProgramElement["category"],
+        },
+    ),
+    paths: program.paths,
+    placements: program.placements,
+  };
+}
+
+/** The body for PUT /api/students/{id}/program. A track and level that don't go together are fixed first. */
+export function programToApi(program: ProgramData): ApiProgramRequest {
+  const { track, level } = validTrackAndLevel(program.track, program.level);
+  return {
+    musicTitle: program.musicTitle.trim(),
+    artist: program.artist.trim(),
+    duration: program.duration.trim(),
+    track: API_TRACKS[track],
+    level,
+    elements: program.elements.map((element) => element.code),
+    paths: program.paths,
+    placements: program.placements,
+  };
+}
+
+/**
+ * Why a program can't be saved on the backend yet, or null if it can. The program is saved as the coach
+ * types, so half-typed values ("2:" in Duration, an empty Music box) wait until they're finished.
+ */
+export function programNotReady(program: Pick<ProgramData, "musicTitle" | "duration">): string | null {
+  if (!program.musicTitle.trim()) return "Give the music a title to save the program.";
+  if (!/^\d{1,2}:[0-5]\d$/.test(program.duration.trim())) return "Write the duration like 2:10 to save the program.";
+  return null;
+}
+
 export function newId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }

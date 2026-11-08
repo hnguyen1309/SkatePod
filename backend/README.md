@@ -93,7 +93,7 @@ Errors come back as JSON "problem details": **400** for invalid input, **404** f
 
 **Availability blocks** are optional, like in the app. The end must be after the start, and blocks on one day can't overlap (409).
 
-**Programs.** One per student. A student without a saved program gets the app's starting program (Untitled, 2:10, four starter elements) on their own freeskate track. The level must be one of the track's levels and every element code must be in the catalog (`GET /api/elements`).
+**Programs.** One per student. A student without a saved program gets the app's starting program (Untitled, 2:10, four starter elements) on their own freeskate track. The level must be one of the track's levels and every element code must be in the catalog (`GET /api/elements`) or be a jump combination of 2 or 3 jumps joined by "+", like the app saves them (`1S+1T`, `2A+1Eu+3S`, where `1Eu` is the half loop).
 
 **Postman.** `postman/SkatePod-API.postman_collection.json` has every request above with checks. In Postman: Import → that file → Run collection. It creates a test student, tries everything, and deletes what it made.
 
@@ -117,7 +117,7 @@ src/main/resources/
 
 **Request flow:** Controller (HTTP + validation) → Service (business rules, transactions, entity ↔ DTO) → Repository (database). Entities never leave the service layer; the API only returns DTOs.
 
-**Database changes:** never edit an applied migration. Add the next file, like `V7__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
+**Database changes:** never edit an applied migration. Add the next file, like `V8__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
 
 ## Your first feature: next lesson from the calendar ✅
 

@@ -13,13 +13,17 @@ import {
   lessonToApi,
   noteFromApi,
   noteToApi,
+  programFromApi,
+  programToApi,
   studentFromApi,
   studentToApi,
   type ApiLesson,
   type ApiNote,
+  type ApiProgram,
   type ApiStudent,
   type Lesson,
   type Note,
+  type ProgramData,
   type Student,
 } from "./data";
 
@@ -124,6 +128,24 @@ export async function updateNote(note: Note): Promise<Note> {
 
 export async function deleteNote(id: string): Promise<void> {
   await request<void>("DELETE", `/notes/${id}`);
+}
+
+/**
+ * A student's program, or null if they don't have one yet. (For those the backend sends a starting
+ * program it hasn't saved; the app shows its own starting program instead, like before.)
+ */
+export async function getProgram(studentId: string): Promise<ProgramData | null> {
+  const program = await request<ApiProgram>("GET", `/students/${studentId}/program`);
+  return program.saved ? programFromApi(program) : null;
+}
+
+export async function saveProgram(studentId: string, program: ProgramData): Promise<void> {
+  await request<ApiProgram>("PUT", `/students/${studentId}/program`, programToApi(program));
+}
+
+/** "Start a new program": the student goes back to the starting program. */
+export async function deleteProgram(studentId: string): Promise<void> {
+  await request<void>("DELETE", `/students/${studentId}/program`);
 }
 
 /** For the Test connection button: how many students the backend has, and how long it took. */

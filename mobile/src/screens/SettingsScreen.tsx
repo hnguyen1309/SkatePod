@@ -96,7 +96,7 @@ export function SettingsScreen(_props: ScreenProps) {
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Backend</Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
           {api.API_URL
-            ? `Students are saved on the backend at ${api.API_URL}. Lessons, notes, programs and settings stay on this phone for now.`
+            ? `Students, lessons, notes and programs are saved on the backend at ${api.API_URL}. Availability and settings stay on this phone for now.`
             : "Not set up: everything is stored on this phone. To use the backend, add EXPO_PUBLIC_API_URL to mobile/.env and restart Expo."}
         </Text>
         <Button
@@ -111,7 +111,7 @@ export function SettingsScreen(_props: ScreenProps) {
         <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Your data</Text>
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 3, marginBottom: 14 }}>
           {source === "backend"
-            ? "Students, lessons and notes are on the backend. Programs, availability and settings are stored on this phone. Export a backup."
+            ? "Students, lessons, notes and programs are on the backend. Availability and settings are stored on this phone. Export a backup."
             : "Everything is stored on this phone. Export a backup of students, lessons, notes, and programs."}
         </Text>
         <View style={{ gap: 10 }}>

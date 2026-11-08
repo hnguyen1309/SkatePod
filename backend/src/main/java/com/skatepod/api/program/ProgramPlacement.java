@@ -10,7 +10,7 @@ public class ProgramPlacement {
     @Column(name = "placement_key", nullable = false, length = 40)
     private String key;
 
-    @Column(nullable = false, length = 10)
+    @Column(nullable = false, length = 20)
     private String code;
 
     @Column(nullable = false)

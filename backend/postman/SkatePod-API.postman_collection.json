@@ -1328,7 +1328,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1344,7 +1344,8 @@
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test(\"Saved with elements in order\", () => { pm.expect(body.saved).to.be.true; pm.expect(body.elements.map(e => e.code)).to.eql(['2S', '1A', 'CSp']); });",
+                  "pm.test(\"Saved with elements in order\", () => { pm.expect(body.saved).to.be.true; pm.expect(body.elements.map(e => e.code)).to.eql(['2S', '1A', 'CSp', '2A+1Eu+3S']); });",
+                  "pm.test(\"A jump combination is one element\", () => pm.expect(body.elements[3].title).to.eql('3 Jump Combination'));",
                   "pm.test(\"Rink lines and markers kept\", () => { pm.expect(body.paths).to.have.length(2); pm.expect(body.paths[0]).to.have.length(2); pm.expect(body.placements[0].code).to.eql('2S'); });"
                 ]
               }

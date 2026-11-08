@@ -11,6 +11,7 @@ import {
   REQUIREMENTS_SEASON,
   TRACKS,
   TRACK_LEVELS,
+  programNotReady,
   requirementLinks,
   validTrackAndLevel,
   type ProgramData,
@@ -41,7 +42,7 @@ const HALF_LOOP: ProgramElement = { code: "1Eu", title: "Single Euler", category
 const COMBINATION_JUMPS = [...ELEMENT_CATALOG.filter((element) => element.category === "Jump"), HALF_LOOP];
 
 export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
-  const { students, programs, setPrograms } = useStore();
+  const { students, programs, updateProgram, clearProgram, source } = useStore();
   const studentIds = students.map((student) => student.id);
   const [studentId, setStudentId] = useState(studentIds[0] ?? "");
   const [view, setView] = useState<View_>("Component sheet");
@@ -49,6 +50,7 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
 
   const saved: ProgramData = { ...DEFAULT_PROGRAM, ...programs[studentId] };
   const current: ProgramData = { ...saved, ...validTrackAndLevel(saved.track, saved.level) };
+  const notReady = programNotReady(current);
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? "Student";
 
   useEffect(() => {
@@ -63,12 +65,9 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
         {
           text: "Start new",
           style: "destructive",
-          onPress: () =>
-            setPrograms((all) => {
-              const next = { ...all };
-              delete next[studentId];
-              return next;
-            }),
+          onPress: () => {
+            clearProgram(studentId); // tells the coach if the backend said no
+          },
         },
       ]);
     }
@@ -78,7 +77,7 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
 
   function update(changes: Partial<ProgramData>) {
     if (!studentId) return;
-    setPrograms((all) => ({ ...all, [studentId]: { ...DEFAULT_PROGRAM, ...all[studentId], ...changes } }));
+    updateProgram(studentId, changes);
   }
 
   const counts = current.elements.reduce<Record<string, number>>((result, element) => {
@@ -127,6 +126,8 @@ export function ProgramsScreen({ intent, onIntentHandled }: ScreenProps) {
             <Field label="Duration" onChangeText={(duration) => update({ duration })} value={current.duration} />
           </View>
         </View>
+        {/* On the backend the program saves as you go, but only once it's complete enough. Say what's missing. */}
+        {source === "backend" && notReady ? <Text style={{ fontSize: 12, color: colors.danger, marginTop: -6 }}>{notReady}</Text> : null}
       </Card>
 
       <Card style={{ marginBottom: 16 }}>

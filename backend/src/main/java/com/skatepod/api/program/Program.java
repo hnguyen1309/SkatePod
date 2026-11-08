@@ -51,7 +51,7 @@ public class Program extends BaseEntity {
     @ElementCollection
     @CollectionTable(name = "program_elements", joinColumns = @JoinColumn(name = "program_id"))
     @OrderColumn(name = "position")
-    @Column(name = "code", nullable = false, length = 10)
+    @Column(name = "code", nullable = false, length = 20)
     private List<String> elements = new ArrayList<>();
 
     @ElementCollection

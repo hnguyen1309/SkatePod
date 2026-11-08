@@ -21,6 +21,18 @@ class CatalogTest {
     }
 
     @Test
+    @DisplayName("Jump combinations of 2 or 3 jumps are elements, and may use the half loop")
+    void jumpCombinations() {
+        assertThat(ElementCatalog.find("1S+1T")).hasValue(new ElementCatalog.Element("1S+1T", "2 Jump Combination", "Jump"));
+        assertThat(ElementCatalog.find("2A+1Eu+3S")).hasValueSatisfying(e -> assertThat(e.title()).isEqualTo("3 Jump Combination"));
+        assertThat(ElementCatalog.find("1Eu")).isEmpty(); // the half loop only counts inside a combination
+        assertThat(ElementCatalog.find("1S")).isPresent();
+        assertThat(ElementCatalog.find("1S+CCoSp")).isEmpty(); // spins can't be in a jump combination
+        assertThat(ElementCatalog.find("1S+1T+1Lo+1T")).isEmpty(); // 4 jumps is too many
+        assertThat(ElementCatalog.find("1S+")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Tracks and their first and last levels")
     void tracks() {
         assertThat(Track.CHAMPIONSHIP.getLevels()).startsWith("Pre-Preliminary").endsWith("Senior").hasSize(8);

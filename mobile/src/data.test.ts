@@ -13,6 +13,10 @@ import {
   minutesFromDuration,
   noteFromApi,
   noteToApi,
+  programFromApi,
+  programNotReady,
+  programToApi,
+  trackFromApi,
   minutesFromApiTime,
   studentToApi,
   toneFor,
@@ -482,5 +486,70 @@ describe("notes on the backend", () => {
     assert.equal(body.overall, "Steady");
     assert.deepEqual(body.skills, ["Waltz jump"]);
     assert.equal("id" in body, false);
+  });
+});
+
+describe("programs on the backend", () => {
+  test("turns the backend's program into the app's, keeping combination titles", () => {
+    const program = programFromApi({
+      studentId: "s1",
+      saved: true,
+      musicTitle: "Nocturne",
+      artist: null,
+      duration: "2:10",
+      track: "EXCEL",
+      level: "Excel Bronze",
+      elements: [
+        { code: "1A", title: "Single Axel", category: "Jump" },
+        { code: "1S+1T", title: "2 Jump Combination", category: "Jump" },
+      ],
+      paths: [[{ x: 1, y: 2 }]],
+      placements: [{ id: "p1", code: "1A", x: 3, y: 4 }],
+    });
+    assert.equal(program.track, "Excel");
+    assert.equal(program.artist, "");
+    assert.deepEqual(program.elements, [
+      { code: "1A", title: "Single Axel", category: "Jump" },
+      { code: "1S+1T", title: "2 Jump Combination", category: "Jump" },
+    ]);
+    assert.deepEqual(program.paths, [[{ x: 1, y: 2 }]]);
+  });
+
+  test("sends element codes and the backend's track name", () => {
+    const body = programToApi({
+      musicTitle: " Nocturne ",
+      artist: "",
+      duration: "2:10",
+      track: "Adult",
+      level: "Adult Bronze",
+      elements: [
+        { code: "2S", title: "Double Salchow", category: "Jump" },
+        { code: "StSq", title: "Step Sequence", category: "Sequence" },
+      ],
+      paths: [],
+      placements: [],
+    });
+    assert.equal(body.track, "ADULT");
+    assert.equal(body.musicTitle, "Nocturne");
+    assert.deepEqual(body.elements, ["2S", "StSq"]);
+  });
+
+  test("a level that isn't on the track is fixed before sending", () => {
+    const body = programToApi({ musicTitle: "A", artist: "", duration: "2:10", track: "Excel", level: "Juvenile", elements: [], paths: [], placements: [] });
+    assert.equal(body.level, "Excel Pre-Preliminary");
+  });
+
+  test("every backend track maps to the app's", () => {
+    assert.equal(trackFromApi("CHAMPIONSHIP"), "Championship");
+    assert.equal(trackFromApi("EXCEL"), "Excel");
+    assert.equal(trackFromApi("ADULT"), "Adult");
+  });
+
+  test("half-typed programs wait before they're saved", () => {
+    assert.equal(programNotReady({ musicTitle: "Nocturne", duration: "2:10" }), null);
+    assert.equal(programNotReady({ musicTitle: "Nocturne", duration: "12:05" }), null);
+    assert.match(programNotReady({ musicTitle: "Nocturne", duration: "2:" }) ?? "", /duration/);
+    assert.match(programNotReady({ musicTitle: "Nocturne", duration: "2:75" }) ?? "", /duration/);
+    assert.match(programNotReady({ musicTitle: "  ", duration: "2:10" }) ?? "", /title/);
   });
 });
