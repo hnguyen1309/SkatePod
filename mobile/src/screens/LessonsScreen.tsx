@@ -22,7 +22,7 @@ import { useStore } from "../store";
 import { colors, radius } from "../theme";
 
 export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { notes, setNotes, students, studentById, settings } = useStore();
+  const { notes, saveNote, deleteNotes, students, studentById, settings } = useStore();
   const [search, setSearch] = useState("");
   const [range, setRange] = useState<HistoryRange>("Last 30 days");
   const [level, setLevel] = useState<string | null>(null);
@@ -125,18 +125,18 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setNotes((current) => current.filter((note) => !selected.includes(note.id)));
+        onPress: async () => {
+          await deleteNotes(selected); // tells the coach if some couldn't be deleted
           stopSelecting();
         },
       },
     ]);
   }
 
-  function save(note: Note) {
-    const saved = { ...note, title: note.title || `${note.lessonType} lesson` };
-    setNotes((current) => (current.some((item) => item.id === saved.id) ? current.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...current]));
-    closeEditor();
+  // If the backend says no, the editor stays open so nothing typed is lost.
+  async function save(note: Note) {
+    const saved = await saveNote({ ...note, title: note.title || `${note.lessonType} lesson` });
+    if (saved) closeEditor();
   }
 
   function remove(note: Note) {
@@ -145,9 +145,8 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setNotes((current) => current.filter((item) => item.id !== note.id));
-          closeEditor();
+        onPress: async () => {
+          if (await deleteNotes([note.id])) closeEditor();
         },
       },
     ]);
@@ -296,11 +295,22 @@ function NoteEditor({
   note: Note;
   isNew: boolean;
   onClose: () => void;
-  onSave: (note: Note) => void;
+  onSave: (note: Note) => Promise<void>; // may wait for the backend
   onDelete: () => void;
 }) {
   const { students, studentById, settings } = useStore();
   const [draft, setDraft] = useState<Note>(note);
+  // True while the backend is saving, so a second tap doesn't add the note twice.
+  const [saving, setSaving] = useState(false);
+  async function saveDraft() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } finally {
+      setSaving(false);
+    }
+  }
   const [newSkill, setNewSkill] = useState("");
   const set = (changes: Partial<Note>) => setDraft((current) => ({ ...current, ...changes }));
   const studentIds = students.map((student) => student.id);
@@ -354,7 +364,7 @@ function NoteEditor({
         <>
           {!isNew ? <Button label="Delete" onPress={onDelete} style={{ flex: 1 }} variant="danger" /> : null}
           <Button icon="share" label="Share" onPress={sharePreview} style={{ flex: 1 }} variant="secondary" />
-          <Button label="Save note" onPress={() => onSave(draft)} style={{ flex: 1.3 }} />
+          <Button disabled={saving} label="Save note" onPress={saveDraft} style={{ flex: 1.3 }} />
         </>
       }
       onClose={closeWithoutSaving}

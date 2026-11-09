@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Lessons history
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Lessons"
 - assertVisible: "Training history"
 - assertVisible: "\\d+ lessons?"

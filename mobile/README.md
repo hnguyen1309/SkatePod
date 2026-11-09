@@ -9,7 +9,7 @@ The iPhone version of the Figma Make prototype, built with Expo (React Native + 
 | **Home** | Today’s lesson count, search students, upcoming lessons |
 | **Students** | Search and filter by discipline category, view a student’s snapshot, add, edit or delete students. Each student can have several disciplines (Learn to Skate, Freeskate, Skills, Pattern Dance…), each with its own level picked from a dropdown. |
 | **Calendar** | Weekly schedule in Week or Day view, add or delete lessons, jump to notes. A lesson can’t be booked over another one (the app tells you whose lesson is in the way). Optional availability blocks show as dashed outlines; time outside them gets light stripes, but you can still book there. Touch an empty time to see a "+" slot where the lesson would go. The calendar fits the screen and scrolls inside: the hour labels stay on the left and the day names stay on top. Pinch (or tap − / +) to zoom, out to 12 hours × 7 days. |
-| **Programs** | Pick track and level, build a program components sheet, draw the skating path on a rink with your finger and place elements |
+| **Programs** | Several programs per student, each a card you open and close. Name it, pick track and level, add the music as a file (with the backend) or a YouTube / Apple Music / Spotify link, build the components sheet, draw the skating path on a rink and place elements, then Save |
 | **Lessons** | Training history: every calendar lesson shows up once it starts, with or without notes. Add a past lesson with its note. Filter by student, time and level; select several to share or delete; write notes, skills and next steps |
 | **Settings** (gear icon) | Coach profile, default lesson length, sharing default, export a backup, reset sample data |
 
@@ -42,7 +42,7 @@ This runs the unit tests in `src/*.test.ts` (for example `src/data.test.ts`) wit
 
 ### UI tests on the iOS Simulator (Maestro)
 
-The UI regression suite in `.maestro/` taps through the real app in Expo Go on the Simulator: tabs, students, calendar lessons and availability, the Lessons history, programs and settings. Each flow first resets the app to the sample data.
+The UI tests in `.maestro/` tap through the real app in Expo Go on the Simulator. `regression/` has the main flow of each tab (tabs, students, calendar lessons and availability, the Lessons history, programs and settings), and `edge-cases/` the unusual paths for each feature (refused saves, cancels, empty results). Each flow first resets the app to the sample data, and the script lists the test cases before it starts. A separate front-to-back flow, `.maestro/backend/full-flow.yaml`, runs with the backend switched on (start the backend and set `EXPO_PUBLIC_API_URL` in `.env` first): `sh run-ui-tests.sh .maestro/backend/full-flow.yaml`. It cleans up after itself.
 
 1. Install Maestro once. Either `brew install mobile-dev-inc/tap/maestro`, or download `maestro.zip` from github.com/mobile-dev-inc/maestro/releases and unzip it into `~/.maestro` (the script finds it there).
 2. Start the app: `npx expo start`, then press **i** to open it in the iOS Simulator.
@@ -52,7 +52,7 @@ The UI regression suite in `.maestro/` taps through the real app in Expo Go on t
 sh run-ui-tests.sh
 ```
 
-Run one flow with `sh run-ui-tests.sh .maestro/03-students.yaml`. A full run takes about 10 minutes. Results (a JUnit report, plus screenshots of any failure) go to `ui-test-results/`, which git ignores. GitHub doesn't run these yet; they need a Mac with the Simulator.
+`sh run-ui-tests.sh` runs regression and edge cases; run one folder with `sh run-ui-tests.sh .maestro/edge-cases` or one flow with `sh run-ui-tests.sh .maestro/regression/03-students.yaml`. A full run takes about 10 minutes. Results (a JUnit report, plus screenshots of any failure) go to `ui-test-results/`, which git ignores. GitHub doesn't run these yet; they need a Mac with the Simulator.
 
 What the first run found is in `UI-TEST-FINDINGS.md`. Dragging lessons, the time wheels, the rink map and the share sheet still need a check by hand.
 
@@ -67,13 +67,14 @@ mobile/
   App.tsx              header, bottom tabs, screen switching
   index.ts             app entry point
   src/data.ts          types, sample data, skating element catalog
-  src/store.tsx        shared app data, saved on the phone
+  src/store.tsx        shared app data, saved on the phone (students, lessons, notes and programs on the backend when .env is set)
+  src/api.ts           calls to the backend; set its address in .env (see .env.example)
   src/components/      icons, buttons, fields, sheets, rink drawing
   src/screens/         one file per tab
 ```
 
 ## Known limits
 
-- Notes, students and programs aren’t synced between phones yet (that needs a backend).
+- Students, weekly lessons, notes and programs can live on the backend (set `EXPO_PUBLIC_API_URL` in `.env`, see RUNNING.md). Availability is still saved on the phone only.
 - “Share” sends the note as text through the iPhone share sheet. A real read-only link comes with the backend.
 - The skating element rules are a sample catalog. Always check the current rulebook.

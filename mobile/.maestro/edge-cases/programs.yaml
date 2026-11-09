@@ -1,0 +1,129 @@
+# Programs edge cases: saves refused with a reason (no duration, a link that isn't a web link), "Discard
+# changes?" (Keep editing / Discard), switching student with unsaved changes, two programs with one open at a
+# time, and cancelling a delete. Runs without the backend, from the sample data (no programs yet).
+appId: host.exp.Exponent
+name: Programs edge cases
+tags: [edge-case]
+---
+- runFlow: ../subflows/start.yaml
+- tapOn: "Programs"
+- assertVisible: "No programs yet"
+
+# 1. No duration: Save is refused with what's missing, and the program stays open.
+- tapOn: "Add a program"
+- scrollUntilVisible:
+    element: "Program name"
+    direction: UP
+- tapOn:
+    text: "Program name"
+    index: 1
+- inputText: "Edge program"
+- pressKey: Enter
+- tapOn:
+    text: "Duration"
+    index: 1
+- eraseText: 6               # empty the duration ("2:10")
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Save program"
+- tapOn: "Save program"
+- assertVisible: "Can't save yet"
+- assertVisible: "Write the duration like 2:10."
+- tapOn: "OK"
+
+# 2. Discard changes: Keep editing leaves everything as it was; Discard throws the new program away.
+- tapOn: "Cancel"
+- assertVisible: "Discard changes\\?"
+- tapOn: "Keep editing"
+- assertVisible: "You have unsaved changes."
+- tapOn: "Cancel"
+- tapOn: "Discard"
+- assertVisible: "No programs yet"
+
+# 3. A music link that isn't a web link is refused; removing it lets the program save.
+- tapOn: "Add a program"
+- tapOn:
+    text: "Program name"
+    index: 1
+- inputText: "Edge program"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Music link"
+- tapOn:
+    text: "Music link"
+    index: 1
+- inputText: "spotify song"
+- pressKey: Enter
+- assertNotVisible: "Open in .*"   # no "Open in …" button for something that isn't a link
+- scrollUntilVisible:
+    element: "Save program"
+- tapOn: "Save program"
+- assertVisible: "Can't save yet"
+- assertVisible: ".*needs to be a web link.*"
+- tapOn: "OK"
+- scrollUntilVisible:
+    element: "Music link"
+    direction: UP
+- tapOn:
+    text: "Music link"
+    index: 1
+- eraseText: 20
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Save program"
+- tapOn: "Save program"
+- extendedWaitUntil:
+    visible: "All changes saved."
+    timeout: 10000
+
+# 4. A second program: opening it closes the first, so only one is open at a time.
+- scrollUntilVisible:
+    element: "Add a program"
+- tapOn: "Add a program"
+- tapOn:
+    text: "Program name"
+    index: 1
+- inputText: "Second program"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Save program"
+- tapOn: "Save program"
+- extendedWaitUntil:
+    visible: "All changes saved."
+    timeout: 10000
+- scrollUntilVisible:
+    element: ".*Edge program.*"
+    direction: UP
+- assertVisible: ".*4 elements.*"   # Edge program is closed: its card shows only the summary
+
+# 5. Unsaved changes + switching student asks first; Keep editing stays on this student.
+- tapOn: ".*Edge program.*"
+- scrollUntilVisible:
+    element: "Remove"
+- tapOn:
+    text: "Remove"
+    index: 0
+- scrollUntilVisible:
+    element: "Student"
+    direction: UP
+- tapOn:
+    text: "Student"
+    index: 1
+- tapOn: "Lily Kim"
+- assertVisible: "Discard changes\\?"
+- tapOn: "Keep editing"
+- assertVisible: ".*Edge program.*"
+- tapOn: ".*Edge program.*"   # close it: asks again, this time Discard
+- tapOn: "Discard"
+- assertVisible: ".*4 elements.*"   # the removed element came back
+
+# 6. Cancelling a delete keeps the program; then delete both for real.
+- tapOn: "Delete Edge program"
+- assertVisible: "Delete “Edge program”\\?"
+- tapOn: "Cancel"
+- assertVisible: ".*Edge program.*"
+- tapOn: "Delete Edge program"
+- tapOn: "Delete"
+- tapOn: "Delete Second program"
+- tapOn: "Delete"
+- assertVisible: "No programs yet"

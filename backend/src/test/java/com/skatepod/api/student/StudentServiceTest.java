@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.skatepod.api.common.BadRequestException;
 import com.skatepod.api.common.NotFoundException;
 import com.skatepod.api.lesson.LessonRepository;
+import com.skatepod.api.program.ProgramService;
 import com.skatepod.api.student.dto.StudentDisciplineRequest;
 import com.skatepod.api.student.dto.StudentDisciplineResponse;
 import com.skatepod.api.student.dto.StudentRequest;
@@ -22,13 +24,18 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class StudentServiceTest {
+
+    @Mock
+    private ProgramService programs;
 
     @Mock
     private StudentRepository students;
@@ -44,7 +51,7 @@ class StudentServiceTest {
     @BeforeEach
     void setUp() {
         Clock fixed = Clock.fixed(Instant.parse("2026-10-22T12:00:00Z"), ZoneId.of("America/New_York"));
-        service = new StudentService(students, lessons, nextLessonCalculator, fixed);
+        service = new StudentService(students, lessons, nextLessonCalculator, programs, fixed);
     }
 
     private static StudentDisciplineRequest discipline(Discipline discipline, String level) {
@@ -166,5 +173,19 @@ class StudentServiceTest {
 
         assertThatThrownBy(() -> service.delete(id)).isInstanceOf(NotFoundException.class);
         verify(students, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("Deleting a student deletes their programs and music files first, then the student")
+    void deleteRemovesTheirPrograms() {
+        UUID id = UUID.randomUUID();
+        Student student = new Student("Skater", List.of());
+        when(students.findById(id)).thenReturn(Optional.of(student));
+
+        service.delete(id);
+
+        InOrder order = inOrder(programs, students);
+        order.verify(programs).deleteAllFor(id);
+        order.verify(students).delete(student);
     }
 }

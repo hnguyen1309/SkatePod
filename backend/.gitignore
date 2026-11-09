@@ -6,3 +6,6 @@ out/
 .vscode/
 .DS_Store
 .env
+
+# Music files uploaded while running the backend on this Mac (see skatepod.music.dir).
+uploads/

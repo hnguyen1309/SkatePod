@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Students add, edit, delete
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Students"
 
 # Search and category filter.

@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Navigation between tabs
 tags: [smoke]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 
 - assertVisible: "Coach dashboard"
 - assertVisible: "Add lesson"

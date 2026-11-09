@@ -1,0 +1,1817 @@
+{
+  "info": {
+    "name": "SkatePod API (local)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Requests and checks for the SkatePod backend running on your Mac (http://localhost:8080/api).\n\nBefore you start: run the backend from backend/ with ./mvnw spring-boot:run. Use the Postman desktop app (or the Desktop Agent) so Postman can reach localhost.\n\nRun the whole collection in order with Run collection. It creates a test student (Mai) and gives her lessons, a note, a program and an availability block, tries the error cases, then deletes everything it made. The sample students are only read, never changed.\n\nThis collection is also saved in the repo at backend/postman/SkatePod-API.postman_collection.json. If data gets messy: stop the backend, run dropdb --force skatepod && createdb -O skatepod skatepod, and start it again."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api"
+    },
+    {
+      "key": "emmaId",
+      "value": "11111111-1111-1111-1111-000000000001"
+    },
+    {
+      "key": "lilyId",
+      "value": "11111111-1111-1111-1111-000000000002"
+    },
+    {
+      "key": "noahId",
+      "value": "11111111-1111-1111-1111-000000000005"
+    },
+    {
+      "key": "emmaLessonId",
+      "value": "22222222-2222-2222-2222-000000000003"
+    },
+    {
+      "key": "studentId",
+      "value": ""
+    },
+    {
+      "key": "lessonId",
+      "value": ""
+    },
+    {
+      "key": "backToBackLessonId",
+      "value": ""
+    },
+    {
+      "key": "laterLessonId",
+      "value": ""
+    },
+    {
+      "key": "blockId",
+      "value": ""
+    },
+    {
+      "key": "noteId",
+      "value": ""
+    },
+    {
+      "key": "noteCount",
+      "value": ""
+    },
+    {
+      "key": "today",
+      "value": ""
+    },
+    {
+      "key": "yesterday",
+      "value": ""
+    },
+    {
+      "key": "later",
+      "value": ""
+    },
+    {
+      "key": "pastTime",
+      "value": ""
+    },
+    {
+      "key": "futureTime",
+      "value": ""
+    },
+    {
+      "key": "programId",
+      "value": ""
+    },
+    {
+      "key": "secondProgramId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Dates the requests need, worked out fresh each time (local time, like the backend's clock).",
+          "const key = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;",
+          "const shift = days => { const d = new Date(); d.setDate(d.getDate() + days); return d; };",
+          "pm.collectionVariables.set('today', key(new Date()));",
+          "pm.collectionVariables.set('yesterday', key(shift(-1)));",
+          "pm.collectionVariables.set('later', key(shift(400)));",
+          "pm.collectionVariables.set('pastTime', new Date(Date.now() - 3600000).toISOString());",
+          "pm.collectionVariables.set('futureTime', new Date(Date.now() + 3600000).toISOString());"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Students: read",
+      "description": "Reads the sample students. Nothing is changed.",
+      "item": [
+        {
+          "name": "List students",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Has the 6 sample students (or more)\", () => { pm.expect(body.length).to.be.at.least(6); });",
+                  "pm.test(\"Sorted A to Z by name\", () => { const n = body.map(s => s.name); pm.expect(n).to.eql([...n].sort((a, b) => a.localeCompare(b))); });",
+                  "pm.test(\"No focus or progress anymore\", () => { body.forEach(s => { pm.expect(s).to.not.have.property('focus'); pm.expect(s).to.not.have.property('progress'); }); });",
+                  "pm.test(\"Every discipline has a track\", () => { body.forEach(s => s.disciplines.forEach(d => pm.expect(['CHAMPIONSHIP', 'EXCEL', 'ADULT']).to.include(d.track))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Emma (next lesson from the weekly calendar)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/{{emmaId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Name is Emma Miller\", () => { pm.expect(body.name).to.eql('Emma Miller'); });",
+                  "pm.test(\"Freeskate comes before Skills (catalog order)\", () => { pm.expect(body.disciplines.map(d => d.discipline)).to.eql(['STANDARD_FREESKATE', 'STANDARD_SKILLS']); });",
+                  "pm.test(\"Has a next lesson within the next 7 days\", () => { pm.expect(body.nextLesson).to.be.an('object'); const days = (new Date(body.nextLesson.date) - new Date(pm.collectionVariables.get('today'))) / 86400000; pm.expect(days).to.be.within(0, 7); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Noah (his lessons ended: not scheduled)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/{{noahId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"No next lesson\", () => { pm.expect(body.nextLesson).to.be.null; });",
+                  "pm.test(\"Adult track\", () => { body.disciplines.forEach(d => pm.expect(d.track).to.eql('ADULT')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List disciplines",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/disciplines"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"12 disciplines\", () => { pm.expect(body).to.have.length(12); });",
+                  "pm.test(\"Learn to Skate is first, starting at Snowplow Sam 1\", () => { pm.expect(body[0].discipline).to.eql('LEARN_TO_SKATE'); pm.expect(body[0].levels[0]).to.eql('Snowplow Sam 1'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Students: create and update",
+      "description": "Creates a test student, Mai. Everything Mai gets is deleted again in the last folder.",
+      "item": [
+        {
+          "name": "Create Mai (Adult track)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"  Mai  \",\n  \"disciplines\": [\n    {\n      \"discipline\": \"PATTERN_DANCE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Bronze\"\n    },\n    {\n      \"discipline\": \"ADULT_FREESKATE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Adult Bronze\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (Created)\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('studentId', body.id);",
+                  "pm.test(\"Name is trimmed\", () => { pm.expect(body.name).to.eql('Mai'); });",
+                  "pm.test(\"Disciplines come back in catalog order\", () => { pm.expect(body.disciplines.map(d => d.discipline)).to.eql(['ADULT_FREESKATE', 'PATTERN_DANCE']); });",
+                  "pm.test(\"Track is ADULT\", () => { body.disciplines.forEach(d => pm.expect(d.track).to.eql('ADULT')); });",
+                  "pm.test(\"No lessons yet, so no next lesson\", () => { pm.expect(body.nextLesson).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update Mai to the Excel track",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/students/{{studentId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"disciplines\": [\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"track\": \"EXCEL\",\n      \"level\": \"Bronze\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"The new list replaced the old one\", () => { pm.expect(body.disciplines).to.have.length(1); pm.expect(body.disciplines[0].discipline).to.eql('STANDARD_FREESKATE'); });",
+                  "pm.test(\"Track is now EXCEL\", () => { pm.expect(body.disciplines[0].track).to.eql('EXCEL'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Students: errors on purpose",
+      "description": "Requests that should fail, to check the error handling.",
+      "item": [
+        {
+          "name": "Blank name → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Discipline without a track → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"disciplines\": [\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"level\": \"Bronze\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown track → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"disciplines\": [\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"track\": \"STANDARD\",\n      \"level\": \"Bronze\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level from another discipline → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"disciplines\": [\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"track\": \"CHAMPIONSHIP\",\n      \"level\": \"Juvenile\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Says what is wrong\", () => { pm.expect(pm.response.json().detail).to.eql('Juvenile is not a level in Standard Track (Freeskate)'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same discipline twice → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"disciplines\": [\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"track\": \"CHAMPIONSHIP\",\n      \"level\": \"Bronze\"\n    },\n    {\n      \"discipline\": \"STANDARD_FREESKATE\",\n      \"track\": \"EXCEL\",\n      \"level\": \"Silver\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Says what is wrong\", () => { pm.expect(pm.response.json().detail).to.eql('Standard Track (Freeskate) is listed more than once'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown student → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/00000000-0000-0000-0000-000000000000"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Lessons (weekly)",
+      "description": "Lessons repeat every week on their day and time, from startDate to an optional endDate, like the app's calendar. Mai's test lessons go on Sunday evening, where the sample data has nothing.",
+      "item": [
+        {
+          "name": "List lessons",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/lessons"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const DAYS = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'];",
+                  "pm.test(\"In week order (Monday first, then by time)\", () => { const k = body.map(l => DAYS.indexOf(l.dayOfWeek) * 10000 + Number(l.startTime.replace(/:/g, '').slice(0, 4))); pm.expect(k).to.eql([...k].sort((a, b) => a - b)); });",
+                  "pm.test(\"Only the 3 lesson types\", () => { body.forEach(l => pm.expect(['Public', 'Freestyle', 'Off-ice']).to.include(l.type)); });",
+                  "pm.test(\"Color follows the type\", () => { const c = { Freestyle: 'TEAL', Public: 'SAND', 'Off-ice': 'PURPLE' }; body.forEach(l => pm.expect(l.color).to.eql(c[l.type])); });",
+                  "pm.test(\"Emma's Thursday 7:00 lesson is at North Rink\", () => { const l = body.find(x => x.studentName === 'Emma Miller' && x.dayOfWeek === 'THURSDAY'); pm.expect(l.place).to.eql('North Rink'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Emma's lessons",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/lessons?studentId={{emmaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "lessons"
+              ],
+              "query": [
+                {
+                  "key": "studentId",
+                  "value": "{{emmaId}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Only Emma's lessons\", () => { pm.response.json().forEach(l => pm.expect(l.studentName).to.eql('Emma Miller')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Book Mai every Sunday 8:00-8:45 PM",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"20:00\",\n  \"durationMinutes\": 45,\n  \"type\": \"Freestyle\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (Created)\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('lessonId', body.id);",
+                  "pm.test(\"Starts today when no start date is sent\", () => { pm.expect(body.startDate).to.eql(pm.collectionVariables.get('today')); });",
+                  "pm.test(\"Weekly, no end date, teal\", () => { pm.expect(body.dayOfWeek).to.eql('SUNDAY'); pm.expect(body.endDate).to.be.null; pm.expect(body.color).to.eql('TEAL'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mai now has a next lesson",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Next lesson is a Sunday at 20:00\", () => { pm.expect(new Date(body.nextLesson.date + 'T12:00:00').getDay()).to.eql(0); pm.expect(body.nextLesson.startTime).to.eql('20:00:00'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overlapping lesson (any student) → 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{emmaId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"20:30\",\n  \"durationMinutes\": 30,\n  \"type\": \"Public\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409 (8:30 PM is during Mai's lesson)\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Back-to-back lesson is fine → 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{emmaId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"20:45\",\n  \"durationMinutes\": 30,\n  \"type\": \"Public\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (starts right when Mai's lesson ends)\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('backToBackLessonId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Same time, but only after Mai's lesson ends → 201",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{emmaId}}\",\n  \"dayOfWeek\": \"MONDAY\",\n  \"startTime\": \"21:00\",\n  \"durationMinutes\": 30,\n  \"type\": \"Off-ice\",\n  \"startDate\": \"{{later}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (the dates never meet)\", () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) pm.collectionVariables.set('laterLessonId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "New lesson starting yesterday → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"06:00\",\n  \"durationMinutes\": 45,\n  \"type\": \"Freestyle\",\n  \"startDate\": \"{{yesterday}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "End date before start date → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"06:00\",\n  \"durationMinutes\": 45,\n  \"type\": \"Freestyle\",\n  \"startDate\": \"{{later}}\",\n  \"endDate\": \"{{today}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Wrong lesson type → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"06:00\",\n  \"durationMinutes\": 45,\n  \"type\": \"Moves\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400 (only Public, Freestyle or Off-ice)\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Too long (over 240 min) → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/lessons",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"06:00\",\n  \"durationMinutes\": 300,\n  \"type\": \"Freestyle\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the back-to-back lesson",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/lessons/{{backToBackLessonId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the later lesson",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/lessons/{{laterLessonId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Availability blocks",
+      "description": "Optional \"I can coach here\" times. Lessons that start inside one show its place.",
+      "item": [
+        {
+          "name": "List availability",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/availability"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "const DAYS = ['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY'];",
+                  "pm.test(\"Monday first, then by time\", () => { const k = body.map(b => DAYS.indexOf(b.dayOfWeek) * 10000 + Number(b.startTime.replace(/:/g, '').slice(0, 4))); pm.expect(k).to.eql([...k].sort((a, b) => a - b)); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Sunday 7-10 PM at Test Rink",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/availability",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"19:00\",\n  \"endTime\": \"22:00\",\n  \"place\": \"  Test Rink \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (Created)\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('blockId', body.id);",
+                  "pm.test(\"Place is trimmed\", () => { pm.expect(body.place).to.eql('Test Rink'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mai's Sunday lesson is now at Test Rink",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/lessons/{{lessonId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Place is Test Rink\", () => { pm.expect(pm.response.json().place).to.eql('Test Rink'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Overlapping block → 409",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/availability",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"21:00\",\n  \"endTime\": \"23:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 409\", () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "End before start → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/availability",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dayOfWeek\": \"SUNDAY\",\n  \"startTime\": \"18:00\",\n  \"endTime\": \"17:00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the Test Rink block",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/availability/{{blockId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Notes (training history)",
+      "description": "The Lessons tab. Listing notes first adds an empty entry for every calendar lesson that has started since the last check.",
+      "item": [
+        {
+          "name": "List notes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/notes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Newest first\", () => { const t = body.map(n => n.date); pm.expect(t).to.eql([...t].sort().reverse()); });",
+                  "pm.test(\"Has the 4 sample notes (or more)\", () => { pm.expect(body.length).to.be.at.least(4); });",
+                  "pm.collectionVariables.set('noteCount', body.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List notes again: nothing added twice",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/notes"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Same number of notes\", () => { pm.expect(pm.response.json().length).to.eql(Number(pm.collectionVariables.get('noteCount'))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add a past lesson for Mai",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notes",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"date\": \"{{pastTime}}\",\n  \"title\": \"Extra session\",\n  \"lessonType\": \"Public\",\n  \"durationMinutes\": 45,\n  \"overall\": \"\",\n  \"focus\": \"Waltz jump\",\n  \"observations\": \"Good height on the waltz jump.\",\n  \"nextSteps\": \"\",\n  \"skills\": [\n    \"Waltz jump\",\n    \"Backward crossovers\"\n  ],\n  \"shared\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201 (Created)\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('noteId', body.id);",
+                  "pm.test(\"Not linked to a calendar lesson\", () => { pm.expect(body.lessonId).to.be.null; });",
+                  "pm.test(\"Blank overall becomes empty, skills kept in order\", () => { pm.expect(body.overall).to.be.null; pm.expect(body.skills).to.eql(['Waltz jump', 'Backward crossovers']); });",
+                  "pm.test(\"Something is written, so not empty\", () => { pm.expect(body.empty).to.be.false; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Change the note",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/notes/{{noteId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"date\": \"{{pastTime}}\",\n  \"title\": \"Extra session\",\n  \"lessonType\": \"Public\",\n  \"durationMinutes\": 45,\n  \"overall\": \"Breakthrough\",\n  \"focus\": \"Waltz jump\",\n  \"observations\": \"Landed it clean three times.\",\n  \"nextSteps\": \"Try it from a three-turn.\",\n  \"skills\": [\n    \"Waltz jump\"\n  ],\n  \"shared\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Overall is Breakthrough\", () => { pm.expect(pm.response.json().overall).to.eql('Breakthrough'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Past lesson in the future → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notes",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"date\": \"{{futureTime}}\",\n  \"title\": \"Extra session\",\n  \"lessonType\": \"Public\",\n  \"durationMinutes\": 45,\n  \"skills\": [],\n  \"shared\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Says what is wrong\", () => { pm.expect(pm.response.json().detail).to.eql(\"A past lesson can't be dated in the future\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Note on someone else's lesson → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notes",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"lessonId\": \"{{emmaLessonId}}\",\n  \"date\": \"{{pastTime}}\",\n  \"title\": \"Off-ice lesson\",\n  \"lessonType\": \"Off-ice\",\n  \"durationMinutes\": 30,\n  \"skills\": [],\n  \"shared\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Says whose lesson it is\", () => { pm.expect(pm.response.json().detail).to.eql(\"That lesson is Emma Miller's, not Mai's\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown overall → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/notes",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"date\": \"{{pastTime}}\",\n  \"title\": \"Extra session\",\n  \"lessonType\": \"Public\",\n  \"durationMinutes\": 45,\n  \"overall\": \"Amazing\",\n  \"skills\": [],\n  \"shared\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete the note",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/notes/{{noteId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The note is gone → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/notes/{{noteId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. Programs",
+      "description": "A student can have several programs, each with a name. The music can be a link and/or a file uploaded with POST /api/music (not in this collection: it needs a file on your Mac, see requests.http).",
+      "item": [
+        {
+          "name": "Lily's programs (she has two)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs?studentId={{lilyId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const names = pm.response.json().map(p => p.name);",
+                  "pm.test(\"Both of Lily's programs, oldest first\", () => pm.expect(names).to.eql(['Free skate 2026-27', 'Spring showcase']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Mai's free skate",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('programId', body.id);",
+                  "pm.test(\"Elements kept in order\", () => pm.expect(body.elements.map(e => e.code)).to.eql(['2S', '1A', 'CSp', '2A+1Eu+3S']));",
+                  "pm.test(\"A jump combination is one element\", () => pm.expect(body.elements[3].title).to.eql('3 Jump Combination'));",
+                  "pm.test(\"Name, link and rink map kept\", () => { pm.expect(body.name).to.eql('Free skate'); pm.expect(body.musicLink).to.eql('https://www.youtube.com/watch?v=example'); pm.expect(body.paths).to.have.length(2); pm.expect(body.placements[0].code).to.eql('2S'); pm.expect(body.musicFile).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Mai's showcase (a second program)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Spring showcase\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"\",\n  \"elements\": [\n    \"1A\"\n  ],\n  \"paths\": [],\n  \"placements\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('secondProgramId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mai now has two programs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs?studentId={{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Two programs\", () => pm.expect(pm.response.json().map(p => p.name)).to.eql(['Free skate', 'Spring showcase']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename Mai's free skate",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/programs/{{programId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate 2026-27\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Renamed, link removed\", () => { pm.expect(body.name).to.eql('Free skate 2026-27'); pm.expect(body.musicLink).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move the program to another student → 400",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/programs/{{programId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{lilyId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level from another track → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Juvenile\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Says why\", () => pm.expect(pm.response.json().detail).to.eql('Juvenile is not a level in the Excel track'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown element → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"5A\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Bad duration → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2 minutes\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Music link that isn't a web link → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"spotify song\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No name → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \" \",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown music file → 404",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ],\n  \"musicFileId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Mai's showcase",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/programs/{{secondProgramId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The showcase is gone → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs/{{secondProgramId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tracks",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tracks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Championship, Excel, Adult\", () => { pm.expect(pm.response.json().map(t => t.name)).to.eql(['Championship', 'Excel', 'Adult']); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List elements",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/elements"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"47 elements, starting with 1T\", () => { const b = pm.response.json(); pm.expect(b).to.have.length(47); pm.expect(b[0].code).to.eql('1T'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. Clean up",
+      "description": "Deletes Mai, and checks that her lessons and programs went with her.",
+      "item": [
+        {
+          "name": "Delete Mai",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mai is gone → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/students/{{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Her lesson went with her → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/lessons/{{lessonId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404 (deleting a student deletes their lessons)\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Her program went with her → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs/{{programId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

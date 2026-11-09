@@ -4,6 +4,7 @@ import com.skatepod.api.common.BadRequestException;
 import com.skatepod.api.common.NotFoundException;
 import com.skatepod.api.lesson.Lesson;
 import com.skatepod.api.lesson.LessonRepository;
+import com.skatepod.api.program.ProgramService;
 import com.skatepod.api.student.dto.NextLessonResponse;
 import com.skatepod.api.student.dto.StudentDisciplineRequest;
 import com.skatepod.api.student.dto.StudentDisciplineResponse;
@@ -28,12 +29,14 @@ public class StudentService {
     private final StudentRepository students;
     private final LessonRepository lessons;
     private final NextLessonCalculator nextLessonCalculator;
+    private final ProgramService programs;
     private final Clock clock;
 
     public StudentService(StudentRepository students, LessonRepository lessons,
-                          NextLessonCalculator nextLessonCalculator, Clock clock) {
+                          NextLessonCalculator nextLessonCalculator, ProgramService programs, Clock clock) {
         this.students = students;
         this.lessons = lessons;
+        this.programs = programs;
         this.nextLessonCalculator = nextLessonCalculator;
         this.clock = clock;
     }
@@ -67,10 +70,16 @@ public class StudentService {
         return toResponse(student, lessons.findAllByStudentId(id));
     }
 
-    /** Deleting a student also deletes their lessons and disciplines (ON DELETE CASCADE in the database). */
+    /**
+     * Deleting a student deletes everything that's theirs: their programs with their uploaded music files
+     * (ProgramService.deleteAllFor, since files on disk need deleting by hand), then the student, which
+     * takes their lessons, notes and disciplines with it (ON DELETE CASCADE in the database).
+     */
     @Transactional
     public void delete(UUID id) {
-        students.delete(find(id));
+        Student student = find(id);
+        programs.deleteAllFor(id);
+        students.delete(student);
     }
 
     private Student find(UUID id) {
@@ -104,8 +113,8 @@ public class StudentService {
     private StudentResponse toResponse(Student student, List<Lesson> studentLessons) {
         NextLessonResponse nextLesson = nextLessonCalculator
                 .findNext(studentLessons, LocalDateTime.now(clock))
-                .map(lesson -> new NextLessonResponse(lesson.getId(), lesson.getDate(),
-                        lesson.getStartTime(), lesson.getType(), lesson.getDurationMinutes()))
+                .map(next -> new NextLessonResponse(next.lesson().getId(), next.startsAt().toLocalDate(),
+                        next.lesson().getStartTime(), next.lesson().getType(), next.lesson().getDurationMinutes()))
                 .orElse(null);
         // Same order as the Discipline enum, so Singles comes before Ice Dance and so on.
         List<StudentDisciplineResponse> disciplines = student.getDisciplines().stream()

@@ -4,6 +4,32 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  TONES,
+  defaultTrackFor,
+  studentFromApi,
+  apiTimeFromMinutes,
+  lessonFromApi,
+  lessonToApi,
+  minutesFromDuration,
+  noteFromApi,
+  noteToApi,
+  DEFAULT_PROGRAM,
+  formatFileSize,
+  musicServiceName,
+  newProgramFor,
+  programFromApi,
+  programHasChanges,
+  programNotReady,
+  programToApi,
+  trackFromApi,
+  sortStudentsByName,
+  startsLaterNote,
+  weekOffsetOf,
+  upgradeOldPrograms,
+  type Program,
+  minutesFromApiTime,
+  studentToApi,
+  toneFor,
   MAX_DAY_WIDTH,
   MAX_HOUR_HEIGHT,
   addDaysToKey,
@@ -322,6 +348,329 @@ describe("calendarScale: zooming the calendar", () => {
     assert.equal(scale.dayWidth, 200); // 1400 / 7
     assert.equal(scale.canZoomIn, false);
     assert.equal(scale.canZoomOut, false);
+  });
+});
+
+describe("students on the backend", () => {
+  test("adult disciplines default to the Adult track, the rest to Championship", () => {
+    assert.equal(defaultTrackFor("ADULT_FREESKATE"), "ADULT");
+    assert.equal(defaultTrackFor("ADULT_LEARN_TO_SKATE"), "ADULT");
+    assert.equal(defaultTrackFor("STANDARD_FREESKATE"), "CHAMPIONSHIP");
+    assert.equal(defaultTrackFor("SYNCHRO"), "CHAMPIONSHIP");
+  });
+
+  test("a student always gets the same avatar color from their id", () => {
+    const id = "3f2a6c1e-0000-4000-8000-000000000001";
+    assert.deepEqual(toneFor(id), toneFor(id));
+    assert.ok(TONES.includes(toneFor(id)));
+  });
+
+  test("turns the backend's student into the app's, keeping the hidden track", () => {
+    const student = studentFromApi({
+      id: "abc",
+      name: "Lily Kim",
+      disciplines: [{ discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" }],
+    });
+    assert.equal(student.name, "Lily Kim");
+    assert.deepEqual(student.disciplines, [{ discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" }]);
+    assert.deepEqual(student.tone, toneFor("abc"));
+  });
+
+  test("sends each discipline's track, or the default one for a newly added discipline", () => {
+    const body = studentToApi({
+      name: "Lily Kim",
+      disciplines: [
+        { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
+        { discipline: "ADULT_SKILLS", level: "Adult Bronze" },
+      ],
+    });
+    assert.deepEqual(body, {
+      name: "Lily Kim",
+      disciplines: [
+        { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
+        { discipline: "ADULT_SKILLS", track: "ADULT", level: "Adult Bronze" },
+      ],
+    });
+  });
+});
+
+describe("lessons on the backend", () => {
+  test("turns the backend's times into minutes and back", () => {
+    assert.equal(minutesFromApiTime("09:30"), 570);
+    assert.equal(minutesFromApiTime("06:32:00"), 392);
+    assert.equal(apiTimeFromMinutes(570), "09:30");
+    assert.equal(apiTimeFromMinutes(392), "06:32");
+    assert.equal(apiTimeFromMinutes(21 * 60 + 5), "21:05");
+  });
+
+  test("turns the backend's lesson into the app's, with the color from the type", () => {
+    const lesson = lessonFromApi({
+      id: "l1",
+      studentId: "s1",
+      dayOfWeek: "TUESDAY",
+      startTime: "09:30:00",
+      durationMinutes: 45,
+      type: "Off-ice",
+      startDate: "2026-11-10",
+      endDate: null,
+      createdAt: "2026-11-07T10:00:00Z",
+    });
+    assert.deepEqual(lesson, {
+      id: "l1",
+      studentId: "s1",
+      day: 1,
+      start: 570,
+      duration: 45,
+      type: "Off-ice",
+      color: "purple",
+      createdAt: "2026-11-07T10:00:00Z",
+      startDate: "2026-11-10",
+      endDate: undefined,
+    });
+  });
+
+  test("sends day names and times, and null for missing dates", () => {
+    const body = lessonToApi({ id: "l1", studentId: "s1", day: 6, start: 1020, duration: 60, type: "Public", color: "sand" });
+    assert.deepEqual(body, {
+      studentId: "s1",
+      dayOfWeek: "SUNDAY",
+      startTime: "17:00",
+      durationMinutes: 60,
+      type: "Public",
+      startDate: null,
+      endDate: null,
+    });
+  });
+});
+
+describe("notes on the backend", () => {
+  test("reads the minutes out of the app's length text", () => {
+    assert.equal(minutesFromDuration("45 minutes"), 45);
+    assert.equal(minutesFromDuration("60"), 60);
+    assert.equal(minutesFromDuration(""), 60);
+  });
+
+  test("turns the backend's note into the app's, with empty text for missing fields", () => {
+    const note = noteFromApi({
+      id: "n1",
+      studentId: "s1",
+      lessonId: null,
+      date: "2026-11-07T15:00:00Z",
+      title: "Freestyle lesson",
+      lessonType: "Freestyle",
+      durationMinutes: 45,
+      overall: null,
+      focus: null,
+      observations: "Clean axel",
+      nextSteps: null,
+      skills: null,
+      shared: false,
+    });
+    assert.deepEqual(note, {
+      id: "n1",
+      studentId: "s1",
+      lessonId: undefined,
+      date: "2026-11-07T15:00:00.000Z",
+      title: "Freestyle lesson",
+      lessonType: "Freestyle",
+      duration: "45 minutes",
+      overall: "",
+      focus: "",
+      observations: "Clean axel",
+      nextSteps: "",
+      skills: [],
+      shared: false,
+    });
+  });
+
+  test("sends the length in minutes and null for a note without a lesson", () => {
+    const body = noteToApi({
+      id: "n1",
+      studentId: "s1",
+      date: "2026-11-07T15:00:00.000Z",
+      title: "Public lesson",
+      lessonType: "Public",
+      duration: "30 minutes",
+      overall: "Steady",
+      focus: "Edges",
+      observations: "",
+      nextSteps: "",
+      skills: ["Waltz jump"],
+      shared: true,
+    });
+    assert.equal(body.durationMinutes, 30);
+    assert.equal(body.lessonId, null);
+    assert.equal(body.overall, "Steady");
+    assert.deepEqual(body.skills, ["Waltz jump"]);
+    assert.equal("id" in body, false);
+  });
+});
+
+describe("programs (several per student, with music)", () => {
+  const program = (changes: Partial<Program> = {}): Program => ({
+    ...DEFAULT_PROGRAM,
+    id: "p1",
+    studentId: "s1",
+    name: "Free skate",
+    musicLink: "",
+    musicFile: null,
+    ...changes,
+  });
+
+  test("turns the backend's program into the app's, keeping combination titles and the music", () => {
+    const result = programFromApi({
+      id: "p1",
+      studentId: "s1",
+      name: "Free skate 2026-27",
+      musicTitle: "Nocturne",
+      artist: null,
+      duration: "2:10",
+      track: "EXCEL",
+      level: "Excel Juvenile",
+      musicLink: null,
+      musicFile: { id: "f1", fileName: "Nocturne.mp3", contentType: "audio/mpeg", sizeBytes: 300000 },
+      elements: [
+        { code: "1A", title: "Single Axel", category: "Jump" },
+        { code: "1S+1T", title: "2 Jump Combination", category: "Jump" },
+      ],
+      paths: [[{ x: 1, y: 2 }]],
+      placements: [{ id: "m1", code: "1A", x: 3, y: 4 }],
+      createdAt: "2026-11-08T05:00:00Z",
+    });
+    assert.equal(result.name, "Free skate 2026-27");
+    assert.equal(result.track, "Excel");
+    assert.equal(result.artist, "");
+    assert.equal(result.musicLink, "");
+    assert.equal(result.musicFile?.fileName, "Nocturne.mp3");
+    assert.deepEqual(result.elements[1], { code: "1S+1T", title: "2 Jump Combination", category: "Jump" });
+  });
+
+  test("sends element codes, the backend's track name and only the music file's id", () => {
+    const body = programToApi(
+      program({
+        name: " Free skate ",
+        track: "Adult",
+        level: "Adult Bronze",
+        musicLink: " https://open.spotify.com/track/1 ",
+        musicFile: { id: "f1", fileName: "a.mp3", contentType: "audio/mpeg", sizeBytes: 1 },
+        elements: [{ code: "2S", title: "Double Salchow", category: "Jump" }],
+      }),
+    );
+    assert.equal(body.name, "Free skate");
+    assert.equal(body.track, "ADULT");
+    assert.equal(body.musicLink, "https://open.spotify.com/track/1");
+    assert.equal(body.musicFileId, "f1");
+    assert.deepEqual(body.elements, ["2S"]);
+  });
+
+  test("a level that isn't on the track is fixed before sending", () => {
+    assert.equal(programToApi(program({ track: "Excel", level: "Juvenile" })).level, "Excel Pre-Preliminary");
+  });
+
+  test("every backend track maps to the app's", () => {
+    assert.equal(trackFromApi("CHAMPIONSHIP"), "Championship");
+    assert.equal(trackFromApi("EXCEL"), "Excel");
+    assert.equal(trackFromApi("ADULT"), "Adult");
+  });
+
+  test("a new program starts on the student's freeskate track and level, with no name", () => {
+    const lily = newProgramFor(
+      {
+        id: "s1",
+        disciplines: [
+          { discipline: "PATTERN_DANCE", level: "Bronze" },
+          { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Excel Juvenile" },
+        ],
+      },
+      "new1",
+    );
+    assert.equal(lily.track, "Excel");
+    assert.equal(lily.level, "Excel Juvenile");
+    assert.equal(lily.name, "");
+    assert.equal(lily.studentId, "s1");
+    assert.equal(lily.id, "new1");
+    assert.deepEqual(lily.elements, DEFAULT_PROGRAM.elements);
+
+    // Adult freeskate without a stored track gets the Adult track; a level not on the track starts at the first.
+    const noah = newProgramFor({ id: "s2", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Gold" }] }, "new2");
+    assert.equal(noah.track, "Adult");
+    assert.equal(noah.level, "Adult Pre-Bronze");
+
+    const none = newProgramFor({ id: "s3", disciplines: [] }, "new3");
+    assert.equal(none.track, "Championship");
+    assert.equal(none.level, "Preliminary");
+  });
+
+  test("names where a music link opens", () => {
+    assert.equal(musicServiceName("https://www.youtube.com/watch?v=abc"), "YouTube");
+    assert.equal(musicServiceName("https://youtu.be/abc"), "YouTube");
+    assert.equal(musicServiceName("https://music.youtube.com/watch?v=abc"), "YouTube Music");
+    assert.equal(musicServiceName("https://open.spotify.com/track/1"), "Spotify");
+    assert.equal(musicServiceName("https://music.apple.com/us/album/1"), "Apple Music");
+    assert.equal(musicServiceName("https://example.org/song"), "example.org");
+    assert.equal(musicServiceName("spotify"), null);
+  });
+
+  test("a program needs a name, a music title, a duration like 2:10 and a real link to save", () => {
+    const ready = { name: "Free skate", musicTitle: "Nocturne", duration: "2:10", musicLink: "" };
+    assert.equal(programNotReady(ready), null);
+    assert.equal(programNotReady({ ...ready, musicLink: "https://youtu.be/abc" }), null);
+    assert.match(programNotReady({ ...ready, name: " " }) ?? "", /name/);
+    assert.match(programNotReady({ ...ready, musicTitle: "" }) ?? "", /title/);
+    assert.match(programNotReady({ ...ready, duration: "2:" }) ?? "", /duration/);
+    assert.match(programNotReady({ ...ready, musicLink: "spotify song" }) ?? "", /link/);
+  });
+
+  test("Save turns on only when something changed", () => {
+    const saved = program();
+    assert.equal(programHasChanges(saved, { ...saved }), false);
+    assert.equal(programHasChanges(saved, { ...saved, level: "Juvenile" }), true);
+    assert.equal(programHasChanges(saved, { ...saved, musicFile: { id: "f1", fileName: "a.mp3", contentType: "audio/mpeg", sizeBytes: 1 } }), true);
+    assert.equal(programHasChanges(saved, { ...saved, elements: [] }), true);
+  });
+
+  test("file sizes read like 4.6 MB", () => {
+    assert.equal(formatFileSize(4812345), "4.6 MB");
+    assert.equal(formatFileSize(300000), "293 KB");
+    assert.equal(formatFileSize(10), "1 KB");
+  });
+
+  test("programs saved on the phone before Nov 2026 (one per student) are kept", () => {
+    const upgraded = upgradeOldPrograms({ s1: { ...DEFAULT_PROGRAM, musicTitle: "Nocturne" } });
+    assert.equal(upgraded.length, 1);
+    assert.equal(upgraded[0].id, "old-s1");
+    assert.equal(upgraded[0].studentId, "s1");
+    assert.equal(upgraded[0].name, "Program");
+    assert.equal(upgraded[0].musicTitle, "Nocturne");
+  });
+});
+
+describe("sortStudentsByName: students A to Z, like the backend's list", () => {
+  test("ignores upper/lower case and accents, and keeps the original list as it was", () => {
+    const students = [{ name: "Sofia" }, { name: "amelia" }, { name: "Élodie" }, { name: "Flow Skater" }, { name: "Emma" }];
+    assert.deepEqual(sortStudentsByName(students).map((student) => student.name), ["amelia", "Élodie", "Emma", "Flow Skater", "Sofia"]);
+    assert.equal(students[0].name, "Sofia");
+  });
+});
+
+describe("a lesson booked for a day that has already passed this week", () => {
+  // Sunday Nov 8, 2026, 5 PM: Saturday Nov 7 has passed, so a Saturday lesson booked now starts Nov 14.
+  const sunday = new Date(2026, 10, 8, 17, 0);
+  const saturdayLesson = { day: 5, start: 7 * 60 + 15, startDate: "2026-11-08" };
+
+  test("weekOffsetOf counts weeks from this one (Monday to Sunday)", () => {
+    assert.equal(weekOffsetOf(new Date(2026, 10, 2), sunday), 0); // Monday of this week
+    assert.equal(weekOffsetOf(new Date(2026, 10, 14), sunday), 1); // next Saturday
+    assert.equal(weekOffsetOf(new Date(2026, 10, 1), sunday), -1); // last Sunday
+  });
+
+  test("the clash alert says when a lesson that hasn't happened yet starts", () => {
+    assert.equal(startsLaterNote(saturdayLesson, sunday), " (starting Sat, Nov 14)");
+  });
+
+  test("no note for lessons that are already going, or have no dates", () => {
+    assert.equal(startsLaterNote({ ...saturdayLesson, startDate: "2026-10-01" }, sunday), "");
+    assert.equal(startsLaterNote({ day: 5, start: 600 }, sunday), "");
   });
 });
 

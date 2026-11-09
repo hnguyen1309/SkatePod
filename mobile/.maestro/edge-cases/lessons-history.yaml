@@ -1,0 +1,68 @@
+# Lessons tab edge cases: closing an untouched note without a question, cancelling a delete, a filter with
+# no results, and leaving Select mode without deleting. Runs without the backend, from the sample data.
+appId: host.exp.Exponent
+name: Lessons history edge cases
+tags: [edge-case]
+---
+- runFlow: ../subflows/start.yaml
+- tapOn: "Lessons"
+- assertVisible: "Training history"
+
+# 1. Nothing changed: closing a new past lesson with the X doesn't ask "Discard changes?".
+- tapOn: "Add a past lesson"
+- assertVisible: "Add past lesson"
+- tapOn: "Close"
+- assertNotVisible: "Discard changes\\?"
+- assertVisible: "Training history"
+
+# 2. Cancelling a delete keeps the note: save one, open it, Delete, then Cancel.
+- tapOn: "Add a past lesson"
+- tapOn: "Sofia Chen"
+- scrollUntilVisible:
+    element: "Skills, program sections, or goals covered..."
+- tapOn:
+    text: "Session focus"
+    index: 1
+- inputText: "EDGE spirals"
+- pressKey: Enter
+- scrollUntilVisible:
+    element: "Save note"
+- tapOn: "Save note"
+- tapOn: ".*Sofia Chen.*EDGE spirals.*"
+- scrollUntilVisible:
+    element: "Delete"
+- tapOn: "Delete"
+- assertVisible: "Delete note\\?"
+- tapOn: "Cancel"
+- tapOn: "Close"
+- assertVisible: ".*EDGE spirals.*"
+
+# 3. A name filter that matches nobody shows the empty message; clearing it brings the lessons back.
+- tapOn: "Filter by student name..."
+- inputText: "Zzzz"
+- pressKey: Enter
+- assertVisible: "No lessons match these filters."
+- tapOn: "Filter by student name..."
+- eraseText: 10
+- pressKey: Enter
+- assertVisible: ".*EDGE spirals.*"
+
+# 4. Select mode: picking a lesson and leaving without Delete keeps it.
+- tapOn: "Select"
+- assertVisible: "0 selected"
+- tapOn: ".*EDGE spirals.*"
+- assertVisible: "1 selected"
+- tapOn: "Cancel"
+- assertVisible: ".*EDGE spirals.*"
+
+# 5. Clean up: delete the note made here (Select mode, confirm).
+- tapOn: "Select"
+- tapOn: ".*EDGE spirals.*"
+- tapOn:
+    text: "Delete"
+    index: 0
+- assertVisible: "Delete 1 lesson\\?"
+- tapOn:
+    text: "Delete"
+    index: 0
+- assertNotVisible: ".*EDGE spirals.*"

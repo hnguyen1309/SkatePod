@@ -1,0 +1,130 @@
+# Programs: a student can have several. Add one (Save stays grey until something changes), build its
+# component sheet including a combination, save it, close and reopen it, check "Discard changes?",
+# then delete it with the trash can (asks first). Runs without the backend, so music upload is off.
+appId: host.exp.Exponent
+name: Programs
+tags: [regression]
+---
+- runFlow: ../subflows/start.yaml
+- tapOn: "Programs"
+- assertVisible: "Program components"
+- assertVisible: "No programs yet"
+
+# A new program opens straight away, on the student's own track. Nothing changed yet, so Save is grey.
+- tapOn: "Add a program"
+- assertVisible: ".*New program.*"
+- scrollUntilVisible:
+    element: "Save program"
+- assertVisible: "Not saved yet: give the program a name to start."   # Save is grey (iOS doesn't report React Native's disabled state, so check the words)
+- assertVisible: "Uploading files needs the backend. You can still add a link below."
+- scrollUntilVisible:
+    element: "Program name"
+    direction: UP
+- tapOn:
+    text: "Program name"
+    index: 1
+- inputText: "Free skate"
+- pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)
+
+# Track and level come from dropdowns.
+- tapOn:
+    text: "Track"
+    index: 1
+- tapOn: "Adult"
+- tapOn:
+    text: "Level"
+    index: 1
+- tapOn: "Adult Gold"
+- assertVisible: "Adult Gold"
+
+# Clear the starter elements so the sheet is empty.
+- scrollUntilVisible:
+    element: "Add element"
+- repeat:
+    times: 10
+    while:
+      visible: "Remove"
+    commands:
+      - tapOn:
+          text: "Remove"
+          index: 0
+- assertVisible: "Tap Add element to begin the sheet."
+
+# Add a single jump.
+- tapOn: "Add element"
+- tapOn:
+    text: "Type"
+    index: 1
+- tapOn: "Jumps"
+- tapOn:
+    text: "Element"
+    index: 1
+- tapOn: "Single Axel"
+- tapOn:
+    text: "Add"
+    index: 0
+- assertVisible: "1A"
+
+# Add a 2 jump combination (both moves must be picked before Add works).
+- scrollUntilVisible:
+    element: "Add element"
+- tapOn: "Add element"
+- tapOn:
+    text: "Type"
+    index: 1
+- tapOn: "Jumps"
+- tapOn:
+    text: "Element"
+    index: 1
+- scrollUntilVisible:
+    element: "2 Jump Combination"
+- tapOn: "2 Jump Combination"
+- tapOn:
+    text: "Move 1"
+    index: 1
+- tapOn: "Double Toe Loop"
+- tapOn:
+    text: "Move 2"
+    index: 1
+- tapOn: "Double Toe Loop"
+- tapOn:
+    text: "Add"
+    index: 0
+- assertVisible: "2T\\+2T"
+
+# Save. The program stays open, with nothing left to save.
+- scrollUntilVisible:
+    element: "Save program"
+- tapOn: "Save program"
+- extendedWaitUntil:
+    visible: "All changes saved."   # Save is grey again
+    timeout: 10000
+
+# Close it, then open it again: the elements were kept.
+- scrollUntilVisible:
+    element: ".*Free skate.*"
+    direction: UP
+- tapOn: ".*Free skate.*Adult Gold.*"
+- assertNotVisible: "Add element"
+- assertVisible: ".*2 elements.*"
+- tapOn: ".*Free skate.*Adult Gold.*"
+- scrollUntilVisible:
+    element: "2T\\+2T"
+
+# A change that isn't saved asks before the program closes.
+- tapOn:
+    text: "Remove"
+    index: 0
+- scrollUntilVisible:
+    element: ".*Free skate.*"
+    direction: UP
+- tapOn: ".*Free skate.*Adult Gold.*"
+- assertVisible: "Discard changes\\?"
+- tapOn: "Discard"
+- assertVisible: ".*2 elements.*"
+
+# The trash can deletes the program, after asking.
+- tapOn: "Delete Free skate"
+- assertVisible: "Delete “Free skate”\\?"
+- tapOn: "Delete"
+- assertVisible: "No programs yet"

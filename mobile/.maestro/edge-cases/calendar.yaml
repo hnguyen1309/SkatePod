@@ -1,0 +1,65 @@
+# Calendar edge cases: a lesson running past the calendar's hours, cancelling a new lesson, cancelling a
+# delete, and availability blocks with the same times on different days (allowed: only the same day
+# overlaps). Runs without the backend, from the sample data.
+appId: host.exp.Exponent
+name: Calendar edge cases
+tags: [edge-case]
+---
+- runFlow: ../subflows/start.yaml
+- tapOn: "Calendar"
+
+# 1. Too long: 9:00 AM + 900 minutes ends after 10 PM, outside the calendar's 6 AM–10 PM. Refused.
+- tapOn: "Add lesson"
+- assertVisible: "Schedule lesson"
+- tapOn:
+    text: "Duration \\(minutes\\)"
+    index: 1
+- eraseText: 5
+- inputText: "900"
+- tapOn:
+    text: "Schedule lesson"
+    index: 1
+- assertVisible: "Outside calendar hours"
+- tapOn: "OK"
+
+# 2. Cancel: the editor closes and no lesson is added.
+- tapOn: "Cancel"
+- assertNotVisible: "Schedule lesson"
+
+# 3. Cancelling a delete keeps the lesson (Emma's sample lesson on Wednesday).
+- tapOn: "Day"
+- tapOn: "WED.*"
+- scrollUntilVisible:
+    element: ".*Emma.*"
+- tapOn: ".*Emma.*"
+- tapOn: "Delete lesson"
+- assertVisible: "Delete lesson\\?"
+- tapOn: "Cancel"
+- tapOn: "Close preview"
+- assertVisible: ".*Emma.*"
+- tapOn: "Week"
+
+# 4. Availability: the same 3–6 PM block on Wednesday and Thursday is fine (different days don't overlap).
+- tapOn: "Availability.*"
+- assertVisible: "Add a block"
+- tapOn: "WED"
+- tapOn: "Add block"
+- assertVisible: "Wednesday · 3:00 PM–6:00 PM"
+- tapOn: "THU"
+- tapOn: "Add block"
+- assertNotVisible: "That overlaps another block"
+- assertVisible: "Thursday · 3:00 PM–6:00 PM"
+- tapOn: "Done"
+- assertVisible: "Availability \\(2\\)"
+
+# 5. Delete both blocks: the calendar is plain again (no "Not available" legend).
+- tapOn: "Availability \\(2\\)"
+- tapOn:
+    text: "Delete block"
+    index: 0
+- tapOn:
+    text: "Delete block"
+    index: 0
+- assertNotVisible: ".*3:00 PM–6:00 PM"
+- tapOn: "Done"
+- assertNotVisible: "Not available"

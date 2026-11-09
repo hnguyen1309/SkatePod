@@ -26,8 +26,17 @@ export type DisciplineId =
   | "SHOWCASE"
   | "THEATRE_ON_ICE";
 
-/** One discipline a student trains in, and their level in it. */
-export type StudentDiscipline = { discipline: DisciplineId; level: string };
+/**
+ * The track a student follows in one discipline, as the backend names it. It isn't shown on the
+ * profile; the backend uses it to start a new program on the student's own track.
+ */
+export type ApiTrack = "CHAMPIONSHIP" | "EXCEL" | "ADULT";
+
+/**
+ * One discipline a student trains in, and their level in it. `track` only comes from the backend
+ * (hidden on the profile); when it's missing, defaultTrackFor fills it in before saving.
+ */
+export type StudentDiscipline = { discipline: DisciplineId; level: string; track?: ApiTrack };
 
 export type Student = {
   id: string;
@@ -379,6 +388,390 @@ export const TONES: Tone[] = [
   { bg: "#dde8f1", fg: "#4d687e" },
 ];
 
+// ---------------------------------------------------------------------------------------------
+// Students on the backend (when EXPO_PUBLIC_API_URL is set, see api.ts). These turn the backend's
+// student JSON into the app's Student and back, so the screens don't need to know where data lives.
+
+/** A student as the backend sends it (GET /api/students). Only the fields the app uses. */
+export type ApiStudent = {
+  id: string;
+  name: string;
+  disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
+};
+
+/** What the backend expects for POST and PUT /api/students. */
+export type ApiStudentRequest = {
+  name: string;
+  disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
+};
+
+/** The track a new discipline gets: Adult for the adult disciplines, Championship for the rest. */
+export function defaultTrackFor(discipline: DisciplineId): ApiTrack {
+  return discipline.startsWith("ADULT_") ? "ADULT" : "CHAMPIONSHIP";
+}
+
+/**
+ * The avatar color for a student. The backend doesn't store one, so it's worked out from the id:
+ * the same student always gets the same color.
+ */
+export function toneFor(id: string): Tone {
+  let sum = 0;
+  for (const char of id) sum = (sum * 31 + char.charCodeAt(0)) % 9973;
+  return TONES[sum % TONES.length];
+}
+
+export function studentFromApi(student: ApiStudent): Student {
+  return {
+    id: student.id,
+    name: student.name,
+    disciplines: student.disciplines.map(({ discipline, track, level }) => ({ discipline, track, level })),
+    tone: toneFor(student.id),
+  };
+}
+
+/** The body for POST/PUT /api/students. Keeps each discipline's track, or gives it the default one. */
+export function studentToApi(student: Pick<Student, "name" | "disciplines">): ApiStudentRequest {
+  return {
+    name: student.name,
+    disciplines: student.disciplines.map(({ discipline, track, level }) => ({
+      discipline,
+      track: track ?? defaultTrackFor(discipline),
+      level,
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Weekly lessons on the backend. The backend counts days by name ("MONDAY") and times as "09:30",
+// the app counts days from 0 (Monday) and times in minutes after midnight (570), so these convert.
+
+export const API_WEEKDAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
+export type ApiWeekday = (typeof API_WEEKDAYS)[number];
+
+/** A lesson as the backend sends it (GET /api/lessons). Only the fields the app uses. */
+export type ApiLesson = {
+  id: string;
+  studentId: string;
+  dayOfWeek: ApiWeekday;
+  startTime: string; // "09:30" (the backend may add seconds: "09:30:00")
+  durationMinutes: number;
+  type: string;
+  startDate: string | null;
+  endDate: string | null;
+  createdAt: string | null;
+};
+
+/** What the backend expects for POST and PUT /api/lessons. */
+export type ApiLessonRequest = {
+  studentId: string;
+  dayOfWeek: ApiWeekday;
+  startTime: string;
+  durationMinutes: number;
+  type: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+/** "09:30" or "09:30:00" → 570. */
+export function minutesFromApiTime(time: string) {
+  const [hours, minutes] = time.split(":").map((part) => Number.parseInt(part, 10));
+  return hours * 60 + (minutes || 0);
+}
+
+/** 570 → "09:30". */
+export function apiTimeFromMinutes(minutes: number) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+export function lessonFromApi(lesson: ApiLesson): Lesson {
+  return {
+    id: lesson.id,
+    studentId: lesson.studentId,
+    day: API_WEEKDAYS.indexOf(lesson.dayOfWeek),
+    start: minutesFromApiTime(lesson.startTime),
+    duration: lesson.durationMinutes,
+    type: lesson.type,
+    // The backend sends the color too ("TEAL"), but it always follows the type, so the app works it out.
+    color: colorForType(lesson.type),
+    createdAt: lesson.createdAt ?? undefined,
+    startDate: lesson.startDate ?? undefined,
+    endDate: lesson.endDate ?? undefined,
+  };
+}
+
+/** The body for POST/PUT /api/lessons. The color isn't sent: the backend picks it from the type. */
+export function lessonToApi(lesson: Lesson): ApiLessonRequest {
+  return {
+    studentId: lesson.studentId,
+    dayOfWeek: API_WEEKDAYS[lesson.day],
+    startTime: apiTimeFromMinutes(lesson.start),
+    durationMinutes: lesson.duration,
+    type: lesson.type,
+    startDate: lesson.startDate ?? null,
+    endDate: lesson.endDate ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Training history notes on the backend. The backend keeps the length as a number of minutes (60)
+// where the app shows text ("60 minutes"), and sends null for fields nobody filled in.
+
+/** A note as the backend sends it (GET /api/notes). Only the fields the app uses. */
+export type ApiNote = {
+  id: string;
+  studentId: string;
+  lessonId: string | null;
+  date: string; // an instant, e.g. "2026-11-07T15:00:00Z"
+  title: string;
+  lessonType: string;
+  durationMinutes: number;
+  overall: string | null;
+  focus: string | null;
+  observations: string | null;
+  nextSteps: string | null;
+  skills: string[] | null;
+  shared: boolean;
+};
+
+/** What the backend expects for POST and PUT /api/notes. */
+export type ApiNoteRequest = Omit<ApiNote, "id">;
+
+/** "60 minutes" → 60. Falls back to 60 if there's no number in it. */
+export function minutesFromDuration(duration: string) {
+  const minutes = Number.parseInt(duration, 10);
+  return minutes > 0 ? minutes : 60;
+}
+
+export function noteFromApi(note: ApiNote): Note {
+  return {
+    id: note.id,
+    studentId: note.studentId,
+    lessonId: note.lessonId ?? undefined,
+    // Written the same way as the app's own dates ("...T15:00:00.000Z"), so sorting by text still works.
+    date: new Date(note.date).toISOString(),
+    title: note.title,
+    lessonType: note.lessonType,
+    duration: `${note.durationMinutes} minutes`,
+    overall: note.overall ?? "",
+    focus: note.focus ?? "",
+    observations: note.observations ?? "",
+    nextSteps: note.nextSteps ?? "",
+    skills: note.skills ?? [],
+    shared: note.shared,
+  };
+}
+
+/** The body for POST/PUT /api/notes. */
+export function noteToApi(note: Note): ApiNoteRequest {
+  return {
+    studentId: note.studentId,
+    lessonId: note.lessonId ?? null,
+    date: note.date,
+    title: note.title,
+    lessonType: note.lessonType,
+    durationMinutes: minutesFromDuration(note.duration),
+    overall: note.overall,
+    focus: note.focus,
+    observations: note.observations,
+    nextSteps: note.nextSteps,
+    skills: note.skills,
+    shared: note.shared,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Programs. A student can have several (Nov 2026), each with a name the coach types. The music can
+// be a link (YouTube, Apple Music, Spotify...) and/or an audio file uploaded to the backend.
+
+/** A music file uploaded to the backend (POST /api/music). It's played from GET /api/music/{id}. */
+export type MusicFile = { id: string; fileName: string; contentType: string; sizeBytes: number };
+
+/** One of a student's programs: the layout (ProgramData) plus who it's for, its name and its music. */
+export type Program = ProgramData & {
+  id: string;
+  studentId: string;
+  name: string; // what the coach calls it, like "Free skate 2026-27"
+  musicLink: string; // a web link to the music, or ""
+  musicFile: MusicFile | null;
+  createdAt?: string;
+};
+
+/** The biggest music file the backend takes (MusicFileService.MAX_BYTES). */
+export const MAX_MUSIC_BYTES = 20 * 1024 * 1024;
+
+/** A program as the backend sends it (GET /api/programs). Only the fields the app uses. */
+export type ApiProgram = {
+  id: string;
+  studentId: string;
+  name: string;
+  musicTitle: string;
+  artist: string | null;
+  duration: string;
+  track: ApiTrack;
+  level: string;
+  musicLink: string | null;
+  musicFile: MusicFile | null;
+  elements: { code: string; title: string; category: string }[];
+  paths: RinkPoint[][];
+  placements: RinkPlacement[];
+  createdAt: string | null;
+};
+
+/** What the backend expects for POST /api/programs and PUT /api/programs/{id}. */
+export type ApiProgramRequest = {
+  studentId: string;
+  name: string;
+  musicTitle: string;
+  artist: string;
+  duration: string;
+  track: ApiTrack;
+  level: string;
+  musicLink: string;
+  musicFileId: string | null;
+  elements: string[]; // codes, e.g. ["1A", "2S", "1S+1T", "StSq"]
+  paths: RinkPoint[][];
+  placements: RinkPlacement[];
+};
+
+const API_TRACKS: Record<Track, ApiTrack> = { Championship: "CHAMPIONSHIP", Excel: "EXCEL", Adult: "ADULT" };
+
+export function trackFromApi(track: ApiTrack): Track {
+  return (Object.keys(API_TRACKS) as Track[]).find((name) => API_TRACKS[name] === track) ?? "Championship";
+}
+
+export function programFromApi(program: ApiProgram): Program {
+  return {
+    id: program.id,
+    studentId: program.studentId,
+    name: program.name,
+    musicTitle: program.musicTitle,
+    artist: program.artist ?? "",
+    duration: program.duration,
+    track: trackFromApi(program.track),
+    level: program.level,
+    musicLink: program.musicLink ?? "",
+    musicFile: program.musicFile,
+    // Titles come from the app's own catalog when it knows the code, so they read the same as before.
+    elements: program.elements.map(
+      (element) =>
+        ELEMENT_CATALOG.find((item) => item.code === element.code) ?? {
+          code: element.code,
+          title: element.title,
+          category: element.category as ProgramElement["category"],
+        },
+    ),
+    paths: program.paths,
+    placements: program.placements,
+    createdAt: program.createdAt ?? undefined,
+  };
+}
+
+/** The body for POST/PUT /api/programs. A track and level that don't go together are fixed first. */
+export function programToApi(program: Program): ApiProgramRequest {
+  const { track, level } = validTrackAndLevel(program.track, program.level);
+  return {
+    studentId: program.studentId,
+    name: program.name.trim(),
+    musicTitle: program.musicTitle.trim(),
+    artist: program.artist.trim(),
+    duration: program.duration.trim(),
+    track: API_TRACKS[track],
+    level,
+    musicLink: program.musicLink.trim(),
+    musicFileId: program.musicFile?.id ?? null,
+    elements: program.elements.map((element) => element.code),
+    paths: program.paths,
+    placements: program.placements,
+  };
+}
+
+/**
+ * A new, unsaved program for a student: the starting layout (DEFAULT_PROGRAM) on the student's own
+ * track, so the coach rarely has to change it:
+ *  - Track: from their Standard Freeskate discipline, else Adult Freeskate, else their first discipline,
+ *    else Championship. (Students from the backend carry their track; others get defaultTrackFor.)
+ *  - Level: their level in that discipline if the track has it, else Preliminary on Championship,
+ *    else the track's first level.
+ * The name starts empty: the coach types it before saving.
+ */
+export function newProgramFor(student: Pick<Student, "id" | "disciplines">, id: string): Program {
+  const rank = (discipline: DisciplineId) =>
+    discipline === "STANDARD_FREESKATE" ? -2 : discipline === "ADULT_FREESKATE" ? -1 : DISCIPLINES.findIndex((item) => item.id === discipline);
+  const singles = [...student.disciplines].sort((a, b) => rank(a.discipline) - rank(b.discipline))[0];
+  const track = singles ? trackFromApi(singles.track ?? defaultTrackFor(singles.discipline)) : "Championship";
+  const levels = TRACK_LEVELS[track] as readonly string[];
+  const level = singles && levels.includes(singles.level) ? singles.level : track === "Championship" ? "Preliminary" : levels[0];
+  return { ...DEFAULT_PROGRAM, id, studentId: student.id, name: "", musicLink: "", musicFile: null, track, level };
+}
+
+/** "YouTube" for a YouTube link, and so on: shown next to the link so the coach sees where it opens. */
+export function musicServiceName(link: string): string | null {
+  const match = /^https?:\/\/([^/?#]+)/i.exec(link.trim());
+  if (!match) return null;
+  const host = match[1].toLowerCase().replace(/^www\./, "");
+  const services: [RegExp, string][] = [
+    [/^music\.youtube\.com$/, "YouTube Music"],
+    [/(^|\.)youtube\.com$|^youtu\.be$/, "YouTube"],
+    [/(^|\.)spotify\.com$/, "Spotify"],
+    [/^music\.apple\.com$/, "Apple Music"],
+    [/(^|\.)soundcloud\.com$/, "SoundCloud"],
+    [/^music\.amazon\./, "Amazon Music"],
+    [/(^|\.)drive\.google\.com$/, "Google Drive"],
+    [/(^|\.)dropbox\.com$/, "Dropbox"],
+  ];
+  return services.find(([pattern]) => pattern.test(host))?.[1] ?? host;
+}
+
+/**
+ * Why a program can't be saved yet, or null if it can. Checked when the coach taps Save, with the same
+ * rules the backend uses (ProgramRequest), so the coach gets a clear message instead of a 400.
+ */
+export function programNotReady(program: Pick<Program, "name" | "musicTitle" | "duration" | "musicLink">): string | null {
+  if (!program.name.trim()) return "Give the program a name, like “Free skate 2026-27”.";
+  if (!program.musicTitle.trim()) return "Give the music a title.";
+  if (!/^\d{1,2}:[0-5]\d$/.test(program.duration.trim())) return "Write the duration like 2:10.";
+  const link = program.musicLink.trim();
+  if (link && !/^https?:\/\/\S+$/i.test(link)) return "The music link needs to be a web link starting with https://.";
+  return null;
+}
+
+/** True when the program in the editor differs from the saved one, so Save turns on (and closing asks first). */
+export function programHasChanges(saved: Program, draft: Program) {
+  return JSON.stringify(programToApi(saved)) !== JSON.stringify(programToApi(draft)) || saved.name !== draft.name;
+}
+
+/** 4812345 → "4.6 MB", 300000 → "293 KB". */
+export function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * Programs saved on a phone before Nov 2026 were one per student ({ studentId: program }). This turns
+ * them into the new list so none are lost. Their id is fixed, so upgrading twice gives the same ids.
+ */
+export function upgradeOldPrograms(old: Record<string, ProgramData>): Program[] {
+  return Object.entries(old).map(([studentId, program]) => ({
+    ...DEFAULT_PROGRAM,
+    ...program,
+    id: `old-${studentId}`,
+    studentId,
+    name: "Program",
+    musicLink: "",
+    musicFile: null,
+  }));
+}
+
+/**
+ * Students A to Z, ignoring upper/lower case and accents ("élodie" sits with the E's), like the backend's
+ * list (GET /api/students is ordered by name). Used after adding or renaming a student on the backend,
+ * so the list doesn't change order when the app next reloads it.
+ */
+export function sortStudentsByName<T extends Pick<Student, "name">>(students: T[]): T[] {
+  return [...students].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
 export function newId() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -729,6 +1122,23 @@ export function fromDateKey(key: string) {
 }
 
 /** Is the weekly lesson running on this calendar day (between its start and end dates)? */
+/** How many weeks from this week `date` falls in: 0 = this week, 1 = next week, -1 = last week. */
+export function weekOffsetOf(date: Date, today = new Date()) {
+  return Math.round((startOfWeek(date).getTime() - startOfWeek(today).getTime()) / (7 * 24 * 60 * 60 * 1000));
+}
+
+/**
+ * " (starting Sat, Nov 14)" for a weekly lesson that hasn't happened yet, "" otherwise. A lesson booked
+ * today for a day that has already passed this week only starts next week, so it isn't on this week's
+ * calendar, yet it still makes that time taken: the clash alert says when it starts, so that makes sense.
+ */
+export function startsLaterNote(lesson: Pick<Lesson, "day" | "start" | "startDate" | "endDate">, now = new Date()) {
+  if (!lesson.startDate) return ""; // lessons without dates have always been on
+  const first = nextLessonTime(lesson, fromDateKey(lesson.startDate));
+  if (!first || first <= now) return "";
+  return ` (starting ${first.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })})`;
+}
+
 export function isLessonActiveOn(lesson: Pick<Lesson, "startDate" | "endDate">, date: Date) {
   const key = toDateKey(date);
   return (!lesson.startDate || key >= lesson.startDate) && (!lesson.endDate || key <= lesson.endDate);

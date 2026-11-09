@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Settings
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Settings"
 - assertVisible: "Coach profile"
 
@@ -14,6 +14,12 @@ tags: [regression]
 - inputText: "Jordan Test"
 - pressKey: Enter
 - tapOn: "60 minutes"
+
+# The UI tests run without mobile/.env, so the Backend card says it isn't set up.
+- scrollUntilVisible:
+    element: "Test connection"
+- assertVisible: ".*Not set up: everything is stored on this phone.*"
+
 - scrollUntilVisible:
     element: "Save settings"
 - tapOn: "Save settings"

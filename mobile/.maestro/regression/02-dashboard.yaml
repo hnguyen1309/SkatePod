@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Dashboard
 tags: [smoke]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 
 - assertVisible: "Good (morning|afternoon|evening), Mia"
 - assertVisible: "Today’s schedule"

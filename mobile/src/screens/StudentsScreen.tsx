@@ -44,7 +44,7 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, setStudents, lessons, availability, notes, programs } = useStore();
+  const { students, saveStudent, deleteStudent, backendError, reloadFromBackend, lessons, availability, notes, programs } = useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -74,21 +74,19 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
     setTimeout(next, 400);
   }
 
-  function save(student: Student) {
-    setStudents((current) =>
-      current.some((item) => item.id === student.id) ? current.map((item) => (item.id === student.id ? student : item)) : [...current, student],
-    );
-    setEditor(null);
+  // With the backend set up, this sends POST or PUT /api/students; the editor stays open if it fails.
+  async function save(student: Student) {
+    if (await saveStudent(student)) setEditor(null);
   }
 
   function remove(student: Student) {
-    Alert.alert("Delete student?", `${student.name} will be removed. Their notes and lessons stay but show as "Removed student".`, [
+    Alert.alert("Delete student?", `This deletes ${student.name} and everything that's theirs: weekly lessons, lesson notes, programs and their music files. It can't be undone.`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
-        onPress: () => {
-          setStudents((current) => current.filter((item) => item.id !== student.id));
+        onPress: async () => {
+          if (!(await deleteStudent(student.id))) return;
           setEditor(null);
           setDetailId(null);
         },
@@ -99,6 +97,14 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
   return (
     <Screen>
       <Heading description="Keep every skater’s training, goals, and upcoming work in one place." eyebrow="Student management" title="Students" />
+
+      {backendError ? (
+        <Card style={{ marginBottom: 16, borderColor: colors.danger }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>Couldn’t load from the backend</Text>
+          <Text style={{ fontSize: 13, color: colors.subtle, marginTop: 4, marginBottom: 12 }}>{backendError}</Text>
+          <Button label="Try again" onPress={() => reloadFromBackend()} variant="secondary" />
+        </Card>
+      ) : null}
 
       <View style={{ gap: 10, marginBottom: 16 }}>
         <SearchBar onChangeText={setQuery} placeholder="Search by student, discipline or level..." value={query} />
@@ -156,7 +162,10 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
             <Label>Training snapshot</Label>
             <DetailRow label="Weekly lessons" value={String(lessons.filter((lesson) => lesson.studentId === detail.id).length)} />
             <DetailRow label="Lesson notes" value={String(notes.filter((note) => note.studentId === detail.id).length)} />
-            <DetailRow label="Program" value={programs[detail.id]?.musicTitle ?? "Not started"} />
+            <DetailRow
+              label="Programs"
+              value={programs.filter((program) => program.studentId === detail.id).map((program) => program.name).join(", ") || "Not started"}
+            />
             <View style={{ height: 1, backgroundColor: colors.borderSoft, marginVertical: 16 }} />
             <Label>Next lesson</Label>
             <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 18 }}>

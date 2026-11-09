@@ -43,7 +43,7 @@ In an October 2026 survey of 9 coaches, scheduling and admin was the most common
 | Folder | What it is |
 | --- | --- |
 | [`mobile/`](mobile/) | **The iPhone app** (Expo, React Native + TypeScript). Android-ready later. |
-| [`backend/`](backend/) | **REST API** (Spring Boot 4 + PostgreSQL): students and lessons with DTOs, validation and Flyway migrations. |
+| [`backend/`](backend/) | **REST API** (Spring Boot 4 + PostgreSQL): students, weekly lessons, training notes, programs and availability, matching the app's model, with DTOs, validation and Flyway migrations. Not connected to the app yet. |
 | [`research/`](research/) | Coach research, like the [October 2026 survey](research/survey-2026-10/README.md). |
 | [`prototype/figma-make/`](prototype/figma-make/) | Original web prototype from Figma Make (React + Vite + Tailwind). Kept as a design reference. |
 
@@ -111,7 +111,8 @@ npm run dev
 - [ ] Trim to the coach MVP based on survey results
 - [ ] Test with home-rink coaches via TestFlight
 - [x] Backend scaffold: Spring Boot + PostgreSQL (students, lessons)
-- [ ] Feature #2: next lesson from the calendar
+- [x] Feature #2: next lesson from the calendar
+- [x] Backend matches the app: weekly lessons, training notes, programs, availability
 - [ ] Connect the app to the backend, then add share links
 - [ ] Launch (free) on the App Store
 

@@ -17,6 +17,17 @@ spring:
     # Errors come back as standard JSON "problem details".
     problemdetails:
       enabled: true
+  servlet:
+    multipart:
+      # Uploaded music files (POST /api/music) can be up to 20 MB, like MusicFileService.MAX_BYTES.
+      max-file-size: 20MB
+      max-request-size: 21MB
 
 server:
   port: ${PORT:8080}
+
+skatepod:
+  music:
+    # Where uploaded music files are kept (relative to the folder the backend runs in, so backend/uploads/music).
+    # Set MUSIC_DIR when deploying, to a folder that survives restarts.
+    dir: ${MUSIC_DIR:uploads/music}
