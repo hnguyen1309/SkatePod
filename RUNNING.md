@@ -1,7 +1,89 @@
 # Running SkatePod locally
 
 Quick notes for starting the database, the backend and the iPhone app on my Mac.
-Use one Terminal tab for the backend and one for the app.
+
+Pick a setup:
+
+- **[A. UI only](#a-ui-only-no-backend)**: just the app on the phone. Everything is saved on the phone. Use this to check screens, layout and text.
+- **[B. Front to back](#b-front-to-back-app--backend--database)**: the app saves students, lessons, notes and programs on the backend (PostgreSQL). Use this to check that data really goes through the API.
+
+The app picks the mode from one line in `mobile/.env`, `EXPO_PUBLIC_API_URL`. If the line is there, the app uses the backend. If it's missing or commented out with `#`, everything stays on the phone. Expo only reads `.env` when it starts, so **restart Expo after every change to it**.
+
+## A. UI only (no backend)
+
+One Terminal tab.
+
+1. **Turn the backend off in the app.** Open `mobile/.env` and put a `#` in front of the `EXPO_PUBLIC_API_URL=` line, or delete the file. (No `.env` at all is fine too.)
+2. **Start Expo:**
+
+   ```bash
+   cd ~/SkatePod/mobile && npx expo start
+   ```
+
+   If the phone isn't on the Mac's Wi-Fi, or can't connect, use `npx expo start --tunnel`.
+3. **Open the app:** scan the QR code with the iPhone camera. It opens in Expo Go.
+4. **Check the mode:** in the app, **Settings → Backend** should say "Not set up: everything is stored on this phone."
+
+Good to know:
+- The phone starts with made-up sample data. **Settings → Reset to sample data** brings it back.
+- Changes to the code show on the phone as soon as you save the file. Shake the phone (or press **r** in the Expo tab) to reload.
+- Music file upload on Programs needs the backend, so it doesn't work here. Music links do.
+- Stop with **Ctrl+C** in the Expo tab.
+
+## B. Front to back (app → backend → database)
+
+Three Terminal tabs: **backend**, **tunnel** and **Expo**. The tunnel lets the phone reach the backend from any network, so this works on any Wi-Fi, or on mobile data.
+
+1. **Database.** It usually starts on its own when I log in. Check it:
+
+   ```bash
+   pg_isready -h localhost
+   ```
+
+   It should say "accepting connections". If it doesn't: `brew services start postgresql@17`.
+2. **Backend** (tab 1):
+
+   ```bash
+   cd ~/SkatePod/backend && ./mvnw spring-boot:run
+   ```
+
+   Wait for "Started SkatePodApplication". To check it, open http://localhost:8080/api/students on the Mac.
+3. **Tunnel** (tab 2):
+
+   ```bash
+   cloudflared tunnel --url http://localhost:8080
+   ```
+
+   Look for the box that says "Your quick Tunnel has been created!" and copy the address in it, like `https://something-random.trycloudflare.com`. **Leave this tab open.** Closing it ends the tunnel. (The first time on a Mac, run `brew install cloudflared` first.)
+4. **Put the address in `mobile/.env`**, adding `/api` to the end, and remove any `#` in front:
+
+   ```
+   EXPO_PUBLIC_API_URL=https://something-random.trycloudflare.com/api
+   ```
+
+5. **Expo** (tab 3). If it's already running, stop it with Ctrl+C first, so it reads the new `.env`:
+
+   ```bash
+   cd ~/SkatePod/mobile && npx expo start --tunnel
+   ```
+
+   Scan the QR code with the iPhone camera.
+6. **Check the connection:** in the app, **Settings → Test connection**. It should say "Connected" and how many students the backend has.
+
+**Every time, the tunnel address is new.** Each time `cloudflared` starts it gets a different address, so redo steps 3–5 (new address in `.env`, restart Expo). The backend and the database can keep running.
+
+What you'll see:
+- Every save prints a line in two tabs: `→ PUT /lessons/… 200` in the Expo tab and `PUT /api/lessons/… → 200` in the backend tab.
+- The app shows the backend's data (the sample data in the dev database), not the phone's.
+- The Lessons tab asks the backend for notes once a minute (`GET /api/notes`). That's when the backend adds an entry for each lesson that has started.
+- Programs save when you tap **Save program** (`POST` or `PUT /api/programs`). An uploaded music file shows as `POST /api/music` and is kept in `backend/uploads/music`.
+- Availability and settings still stay on the phone for now.
+
+When you're done, press **Ctrl+C** in the tunnel tab. Anyone with the link can reach the dev backend (there's no login), so keep only made-up sample data in it and don't leave the tunnel running. To go back to UI only, follow guide A, step 1 and restart Expo.
+
+**Same Wi-Fi instead of a tunnel?** If the phone and the Mac are on the same Wi-Fi, you can skip the tunnel. In step 4, use the Mac's Wi-Fi address (**System Settings → Wi-Fi → Details**, like `192.168.1.20`): `EXPO_PUBLIC_API_URL=http://192.168.1.20:8080/api`. Then start Expo with `npx expo start` (no `--tunnel`). The iOS Simulator can use `http://localhost:8080/api`.
+
+The sections below have more detail on each part.
 
 ## 1. Database (PostgreSQL 17, installed with Homebrew)
 
@@ -71,23 +153,7 @@ npx expo start                   # scan the QR code with the iPhone camera
 My Mac and iPhone need to be on the same Wi-Fi. If the phone can't connect, use `npx expo start --tunnel`.
 Stop it with **Ctrl+C**.
 
-**Students, lessons, notes and programs on the backend (optional).** Without setup, the app keeps everything on the phone. To save them on the backend instead:
-
-1. Find my Mac's Wi-Fi address: **System Settings → Wi-Fi → Details** (something like `192.168.1.20`).
-2. In `mobile/`, copy `.env.example` to `.env` and put that address in it: `EXPO_PUBLIC_API_URL=http://192.168.1.20:8080/api`
-3. Start the backend (step 2), then restart Expo (`npx expo start`). Expo only reads `.env` when it starts.
-4. In the app: **Settings → Test connection**. It should say "Connected".
-
-Every tap that saves a student, a lesson or a note prints a line in both terminals, e.g. `→ PUT /lessons/… 200` in the Expo terminal and `PUT /api/lessons/… → 200` in the backend terminal. The calendar and the Lessons tab then show the backend's data (the sample data from the dev database), not the phone's. The Lessons tab asks the backend for notes once a minute (`GET /api/notes`), which is when the backend adds an entry for each lesson that has started. Programs save when you tap **Save program** (`POST` or `PUT /api/programs`), and an uploaded music file shows as `POST /api/music`. Uploaded files are kept in `backend/uploads/music`. Availability still stays on the phone for now. The phone has to be on the same Wi-Fi as the Mac, even with `--tunnel`. Delete `.env` (and restart Expo) to go back to phone-only.
-
-**Phone not on the Mac's Wi-Fi (or using `--tunnel`)?** The Expo tunnel only carries the app, not the backend, so the phone says it can't connect to the backend. Give the backend its own tunnel:
-
-1. Once: `brew install cloudflared`
-2. With the backend running, in its own Terminal tab: `cloudflared tunnel --url http://localhost:8080`. It prints an address like `https://something-random.trycloudflare.com`.
-3. In `mobile/.env`: `EXPO_PUBLIC_API_URL=https://something-random.trycloudflare.com/api` (your address, plus `/api`).
-4. Restart Expo (`npx expo start --tunnel`). Expo only reads `.env` when it starts.
-
-The address changes every time cloudflared starts, so redo steps 2–4 each time. Anyone with the link can reach your dev backend (there's no login), so keep only the made-up sample data in it and stop the tunnel (Ctrl+C) when you're done.
+To use the backend from the app, see [guide B](#b-front-to-back-app--backend--database) at the top.
 
 UI tests (Maestro, on the iOS Simulator): with `npx expo start` running and the app open in the Simulator (press **i**), run `sh run-ui-tests.sh` from `mobile/` in a second terminal (regression + edge cases; add a folder or file to run less, like `.maestro/edge-cases`). It resets the app to sample data. Setup steps are in `mobile/README.md`.
 

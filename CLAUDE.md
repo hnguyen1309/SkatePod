@@ -24,7 +24,7 @@ SkatePod is a coach-first iPhone app for figure skating coaches: students, a wee
 
 ## Commands
 
-Han's step-by-step start-up notes are in [RUNNING.md](RUNNING.md); keep it in sync with this section.
+Han's step-by-step start-up notes are in [RUNNING.md](RUNNING.md) (guide A: UI only, phone storage; guide B: front to back through a Cloudflare tunnel); keep it in sync with this section.
 
 ```bash
 # Database: Homebrew PostgreSQL 17 (not Docker; backend/compose.yaml is unused). DB, user and password are all `skatepod` on localhost:5432.
@@ -38,6 +38,7 @@ dropdb skatepod && createdb -O skatepod skatepod  # wipe; the next backend start
 # Mobile (from mobile/)
 sh setup.sh                                       # one time
 npx expo start                                    # scan the QR code with Expo Go (--tunnel if needed)
+cloudflared tunnel --url http://localhost:8080    # front to back from any network: put the printed address + /api in mobile/.env, restart Expo (RUNNING.md guide B)
 npx tsc --noEmit                                  # type check (no linter)
 npm test                                          # unit tests: src/**/*.test.ts with Node's built-in runner
 sh run-ui-tests.sh [.maestro/<folder or flow>]   # Maestro UI suite on the iOS Simulator (needs `npx expo start`); prints the test cases first
