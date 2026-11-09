@@ -19,25 +19,31 @@ tags: [regression]
 - tapOn: "Zoom in"
 - assertVisible: "Schedule"
 
-# Schedule a lesson for Amelia on Sunday at 9:00 AM (the default start).
+# Schedule a weekly lesson for Amelia on Sunday at 9:00 AM (the default start).
+# The date starts on today and the weekday comes from it, so this part assumes the flow runs on a Sunday
+# (turning the date wheel isn't scripted yet).
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
-# The student and day chips run off the right edge, so swipe each row to reach Amelia and Sunday.
+# The student chips run off the right edge, so swipe the row to reach Amelia.
 # (Long swipes by screen position; a short swipe on a chip counts as a tap.)
 - swipe:
     start: 92%, 21%
     end: 5%, 21%
     duration: 600
 - tapOn: "Amelia Park"
-- swipe:
-    start: 92%, 29%
-    end: 5%, 29%
-    duration: 600
-- tapOn: "SUN"
 - tapOn:
     text: "Off-ice"
     index: 0
+# New lessons happen once until Repeat is on; then the Recurrence ends card slides open.
+- scrollUntilVisible:
+    element: "Repeat weekly"
+- assertVisible: "One lesson on.*"
+- tapOn: "Repeat weekly"
+- assertVisible: "Recurrence ends"
 - assertVisible: "Every Sunday at 9:00 AM.*"
+- tapOn: "After X lessons"
+- assertVisible: ".*\\(10 lessons\\).*"
+- tapOn: "No end date"
 - tapOn:
     text: "Schedule lesson"
     index: 1

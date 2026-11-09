@@ -1157,3 +1157,50 @@ export function nextLessonTime(lesson: Pick<Lesson, "day" | "start" | "startDate
   if (lesson.endDate && toDateKey(time) > lesson.endDate) return null;
   return time;
 }
+
+// --- One-time and repeating lessons ---
+// Every lesson is stored the same way (a weekday plus optional start and end dates). A one-time lesson
+// is just one whose end date is its start date, so there's no new field and nothing to upgrade.
+
+/** "2026-11-12" plus a number of days (negative goes back) → another day key. */
+export function addDaysToKey(key: string, days: number) {
+  const date = fromDateKey(key);
+  date.setDate(date.getDate() + days);
+  return toDateKey(date);
+}
+
+/** The weekday of a day key, 0 = Monday ... 6 = Sunday (the same numbering as Lesson.day). */
+export function weekdayOfKey(key: string) {
+  return (fromDateKey(key).getDay() + 6) % 7;
+}
+
+/** The first day on or after `key` that falls on `day` (0 = Monday). */
+export function nextDateOnWeekday(key: string, day: number) {
+  return addDaysToKey(key, (day - weekdayOfKey(key) + 7) % 7);
+}
+
+/** Does the lesson happen at most once? (It has both dates and they're less than a week apart.) */
+export function isOneTimeLesson(lesson: Pick<Lesson, "startDate" | "endDate">) {
+  return Boolean(lesson.startDate && lesson.endDate && lesson.endDate < addDaysToKey(lesson.startDate, 7));
+}
+
+/** The end date for a weekly lesson that stops after `count` lessons, the first one on `firstDate`. */
+export function endDateAfterLessons(firstDate: string, count: number) {
+  return addDaysToKey(firstDate, 7 * (Math.max(1, Math.floor(count)) - 1));
+}
+
+/** How many weekly lessons fall from `firstDate` to `endDate`, both included (0 if the end is earlier). */
+export function countWeeklyLessons(firstDate: string, endDate: string) {
+  const days = Math.round((fromDateKey(endDate).getTime() - fromDateKey(firstDate).getTime()) / 86_400_000);
+  return days < 0 ? 0 : Math.floor(days / 7) + 1;
+}
+
+/**
+ * Moving a lesson to another weekday. A one-time lesson moves to that weekday in the same week, so it
+ * doesn't fall outside its own dates and vanish. A repeating lesson keeps its dates.
+ */
+export function moveToWeekday<T extends Pick<Lesson, "day" | "startDate" | "endDate">>(lesson: T, day: number): T {
+  if (day === lesson.day || !isOneTimeLesson(lesson) || !lesson.startDate) return { ...lesson, day };
+  const date = addDaysToKey(lesson.startDate, day - weekdayOfKey(lesson.startDate));
+  return { ...lesson, day, startDate: date, endDate: date };
+}
