@@ -28,6 +28,10 @@ Skating away from endless juggling of details, so coaches can be on the ice teac
 - **Keep it simple and organized**, because coaches have many students to manage.
 - **Work alongside existing tools** (Google Drive, Skater Stats), because coaches already have habits, which makes adoption easier.
 
+## What coaches told us
+
+In an October 2026 survey of 9 coaches, scheduling and admin was the most common frustration (6 of 9), finding competition and test rules was what most wanted fixed (4 of 9), and 7 of 9 keep student information mostly in their head. Charts and takeaways: [research/survey-2026-10](research/survey-2026-10/README.md).
+
 ## MVP scope
 
 **In:** student list · quick lesson notes (newest first) · practice checklist · links to Drive files, music and competition documents · read-only share link
@@ -40,6 +44,7 @@ Skating away from endless juggling of details, so coaches can be on the ice teac
 | --- | --- |
 | [`mobile/`](mobile/) | **The iPhone app** (Expo, React Native + TypeScript). Android-ready later. |
 | [`backend/`](backend/) | **REST API** (Spring Boot 4 + PostgreSQL): students and lessons with DTOs, validation and Flyway migrations. |
+| [`research/`](research/) | Coach research, like the [October 2026 survey](research/survey-2026-10/README.md). |
 | [`prototype/figma-make/`](prototype/figma-make/) | Original web prototype from Figma Make (React + Vite + Tailwind). Kept as a design reference. |
 
 ## Run it locally
