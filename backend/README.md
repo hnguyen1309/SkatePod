@@ -59,7 +59,7 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 | GET | `/api/students/{id}` | One student |
 | POST | `/api/students` | Create a student → 201 |
 | PUT | `/api/students/{id}` | Update a student |
-| DELETE | `/api/students/{id}` | Delete a student with their lessons, notes and program → 204 |
+| DELETE | `/api/students/{id}` | Delete a student with everything that's theirs: lessons, notes, programs and their music files → 204 |
 | GET | `/api/disciplines` | Every discipline with its category and levels (lowest first) |
 | GET | `/api/lessons?studentId=` | List weekly lessons, Monday first (optionally for one student) |
 | GET | `/api/lessons/{id}` | One lesson |
@@ -75,9 +75,13 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 | POST | `/api/notes` | Add a note (for example "Add a past lesson") → 201 |
 | PUT | `/api/notes/{id}` | Change a note |
 | DELETE | `/api/notes/{id}` | Delete a note for good → 204 |
-| GET | `/api/students/{id}/program` | The student's program, or a starting program (`saved: false`) |
-| PUT | `/api/students/{id}/program` | Save the student's program (creates or replaces it) |
-| DELETE | `/api/students/{id}/program` | Remove the program → 204 |
+| GET | `/api/programs` | Every program, oldest first (`?studentId=...` for one student's) |
+| GET | `/api/programs/{id}` | One program |
+| POST | `/api/programs` | Add a program → 201 |
+| PUT | `/api/programs/{id}` | Change a program (it stays with its student) |
+| DELETE | `/api/programs/{id}` | Delete a program, and its music file if no other program uses it → 204 |
+| POST | `/api/music` | Upload a music file (form field `file`, audio only, up to 20 MB) → 201 with its id |
+| GET | `/api/music/{id}` | The music file itself, to play it |
 | GET | `/api/tracks` | Championship, Excel and Adult, with their levels |
 | GET | `/api/elements` | Every program element (jumps, spins, sequences) |
 
@@ -93,7 +97,7 @@ Errors come back as JSON "problem details": **400** for invalid input, **404** f
 
 **Availability blocks** are optional, like in the app. The end must be after the start, and blocks on one day can't overlap (409).
 
-**Programs.** One per student. A student without a saved program gets the app's starting program (Untitled, 2:10, four starter elements) on their own freeskate track. The level must be one of the track's levels and every element code must be in the catalog (`GET /api/elements`) or be a jump combination of 2 or 3 jumps joined by "+", like the app saves them (`1S+1T`, `2A+1Eu+3S`, where `1Eu` is the half loop).
+**Programs.** A student can have several, each with a `name` (like "Free skate 2026-27"). The music can be a `musicLink` (YouTube, Apple Music, Spotify...) and/or an uploaded file: upload it first with `POST /api/music`, then save the program with the returned id as `musicFileId`. The files are kept in `backend/uploads/music` (set `MUSIC_DIR` to change it; the folder is ignored by git). The level must be one of the track's levels and every element code must be in the catalog (`GET /api/elements`) or be a jump combination of 2 or 3 jumps joined by "+", like the app saves them (`1S+1T`, `2A+1Eu+3S`, where `1Eu` is the half loop).
 
 **Postman.** `postman/SkatePod-API.postman_collection.json` has every request above with checks. In Postman: Import → that file → Run collection. It creates a test student, tries everything, and deletes what it made.
 
@@ -108,6 +112,7 @@ src/main/java/com/skatepod/api/
   availability/   Availability blocks
   note/           Training history (notes) and filling it in (NoteService.catchUpHistory)
   program/        Programs, the element catalog, tracks and elements endpoints
+  music/          Uploaded music files for programs
   common/         BaseEntity (id + timestamps), errors, Clock
   (each feature has a dto/ folder for its request and response records)
 src/main/resources/
@@ -117,7 +122,7 @@ src/main/resources/
 
 **Request flow:** Controller (HTTP + validation) → Service (business rules, transactions, entity ↔ DTO) → Repository (database). Entities never leave the service layer; the API only returns DTOs.
 
-**Database changes:** never edit an applied migration. Add the next file, like `V8__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
+**Database changes:** never edit an applied migration. Add the next file, like `V9__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
 
 ## Your first feature: next lesson from the calendar ✅
 
@@ -129,4 +134,4 @@ Done: you built `NextLessonCalculator` for dated lessons. Lessons repeat weekly 
 
 - `compose.yaml` passwords are for local development only. Use environment variables (`DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`) when deploying.
 - The dev sample data is a Flyway migration, so use the dev database only for development. Start production with a fresh database.
-- The iPhone app doesn't call this API yet. The API now matches the app's model (weekly lessons, notes, programs, availability), so connecting them is the next step. The app's settings stay on the phone.
+- The iPhone app uses this API when `mobile/.env` sets `EXPO_PUBLIC_API_URL` (see RUNNING.md): students, lessons, notes and programs so far. Availability is next. The app's settings stay on the phone.

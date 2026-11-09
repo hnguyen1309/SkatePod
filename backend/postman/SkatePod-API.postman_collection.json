@@ -72,6 +72,14 @@
     {
       "key": "futureTime",
       "value": ""
+    },
+    {
+      "key": "programId",
+      "value": ""
+    },
+    {
+      "key": "secondProgramId",
+      "value": ""
     }
   ],
   "event": [
@@ -1271,13 +1279,13 @@
     },
     {
       "name": "7. Programs",
-      "description": "One program per student. A student without one gets a starting program on their own track (saved: false).",
+      "description": "A student can have several programs, each with a name. The music can be a link and/or a file uploaded with POST /api/music (not in this collection: it needs a file on your Mac, see requests.http).",
       "item": [
         {
-          "name": "Lily's saved program (Excel)",
+          "name": "Lily's programs (she has two)",
           "request": {
             "method": "GET",
-            "url": "{{baseUrl}}/students/{{lilyId}}/program"
+            "url": "{{baseUrl}}/programs?studentId={{lilyId}}"
           },
           "event": [
             {
@@ -1286,40 +1294,18 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"Saved, on the Excel track\", () => { pm.expect(body.saved).to.be.true; pm.expect(body.track).to.eql('EXCEL'); pm.expect(body.level).to.eql('Excel Juvenile'); });",
-                  "pm.test(\"Elements in skating order with names\", () => { pm.expect(body.elements.map(e => e.code)).to.eql(['2S', 'FCSp', '2Lo', 'StSq', 'CCoSp']); pm.expect(body.elements[0].title).to.eql('Double Salchow'); });"
+                  "const names = pm.response.json().map(p => p.name);",
+                  "pm.test(\"Both of Lily's programs, oldest first\", () => pm.expect(names).to.eql(['Free skate 2026-27', 'Spring showcase']));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Noah's starting program (Adult)",
+          "name": "Add Mai's free skate",
           "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/students/{{noahId}}/program"
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"Not saved yet, on his Adult track at his level\", () => { pm.expect(body.saved).to.be.false; pm.expect(body.track).to.eql('ADULT'); pm.expect(body.level).to.eql('Adult Gold'); });",
-                  "pm.test(\"The four starter elements\", () => { pm.expect(body.elements.map(e => e.code)).to.eql(['1A', '2S', 'CCoSp', 'StSq']); });"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "Save Mai's program",
-          "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/students/{{studentId}}/program",
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
             "header": [
               {
                 "key": "Content-Type",
@@ -1328,7 +1314,98 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('programId', body.id);",
+                  "pm.test(\"Elements kept in order\", () => pm.expect(body.elements.map(e => e.code)).to.eql(['2S', '1A', 'CSp', '2A+1Eu+3S']));",
+                  "pm.test(\"A jump combination is one element\", () => pm.expect(body.elements[3].title).to.eql('3 Jump Combination'));",
+                  "pm.test(\"Name, link and rink map kept\", () => { pm.expect(body.name).to.eql('Free skate'); pm.expect(body.musicLink).to.eql('https://www.youtube.com/watch?v=example'); pm.expect(body.paths).to.have.length(2); pm.expect(body.placements[0].code).to.eql('2S'); pm.expect(body.musicFile).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Mai's showcase (a second program)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Spring showcase\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"\",\n  \"elements\": [\n    \"1A\"\n  ],\n  \"paths\": [],\n  \"placements\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('secondProgramId', pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Mai now has two programs",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs?studentId={{studentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Two programs\", () => pm.expect(pm.response.json().map(p => p.name)).to.eql(['Free skate', 'Spring showcase']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Rename Mai's free skate",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/programs/{{programId}}",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate 2026-27\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1344,19 +1421,17 @@
                 "exec": [
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
-                  "pm.test(\"Saved with elements in order\", () => { pm.expect(body.saved).to.be.true; pm.expect(body.elements.map(e => e.code)).to.eql(['2S', '1A', 'CSp', '2A+1Eu+3S']); });",
-                  "pm.test(\"A jump combination is one element\", () => pm.expect(body.elements[3].title).to.eql('3 Jump Combination'));",
-                  "pm.test(\"Rink lines and markers kept\", () => { pm.expect(body.paths).to.have.length(2); pm.expect(body.paths[0]).to.have.length(2); pm.expect(body.placements[0].code).to.eql('2S'); });"
+                  "pm.test(\"Renamed, link removed\", () => { pm.expect(body.name).to.eql('Free skate 2026-27'); pm.expect(body.musicLink).to.be.null; });"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Level from another track → 400",
+          "name": "Move the program to another student → 400",
           "request": {
             "method": "PUT",
-            "url": "{{baseUrl}}/students/{{studentId}}/program",
+            "url": "{{baseUrl}}/programs/{{programId}}",
             "header": [
               {
                 "key": "Content-Type",
@@ -1365,7 +1440,40 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Juvenile\",\n  \"elements\": [\n    \"2S\"\n  ]\n}",
+              "raw": "{\n  \"studentId\": \"{{lilyId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Level from another track → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Juvenile\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1380,7 +1488,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));",
-                  "pm.test(\"Says what is wrong\", () => { pm.expect(pm.response.json().detail).to.eql('Juvenile is not a level in the Excel track'); });"
+                  "pm.test(\"Says why\", () => pm.expect(pm.response.json().detail).to.eql('Juvenile is not a level in the Excel track'));"
                 ]
               }
             }
@@ -1389,8 +1497,8 @@
         {
           "name": "Unknown element → 400",
           "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/students/{{studentId}}/program",
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
             "header": [
               {
                 "key": "Content-Type",
@@ -1399,7 +1507,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Juvenile\",\n  \"elements\": [\n    \"5A\"\n  ]\n}",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"5A\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1422,8 +1530,8 @@
         {
           "name": "Bad duration → 400",
           "request": {
-            "method": "PUT",
-            "url": "{{baseUrl}}/students/{{studentId}}/program",
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
             "header": [
               {
                 "key": "Content-Type",
@@ -1432,7 +1540,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"musicTitle\": \"Swan Lake\",\n  \"duration\": \"two minutes\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Juvenile\",\n  \"elements\": [\n    \"2S\"\n  ]\n}",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2 minutes\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1453,10 +1561,25 @@
           ]
         },
         {
-          "name": "Delete Mai's program",
+          "name": "Music link that isn't a web link → 400",
           "request": {
-            "method": "DELETE",
-            "url": "{{baseUrl}}/students/{{studentId}}/program"
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"spotify song\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "event": [
             {
@@ -1464,17 +1587,32 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 204 (No Content)\", () => pm.response.to.have.status(204));"
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Mai is back to a starting program",
+          "name": "No name → 400",
           "request": {
-            "method": "GET",
-            "url": "{{baseUrl}}/students/{{studentId}}/program"
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \" \",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "event": [
             {
@@ -1482,8 +1620,76 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
-                  "pm.test(\"Not saved, on her Excel track\", () => { const b = pm.response.json(); pm.expect(b.saved).to.be.false; pm.expect(b.track).to.eql('EXCEL'); });"
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown music file → 404",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/programs",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"studentId\": \"{{studentId}}\",\n  \"name\": \"Free skate\",\n  \"musicTitle\": \"Swan Lake\",\n  \"artist\": \"Tchaikovsky\",\n  \"duration\": \"2:10\",\n  \"track\": \"EXCEL\",\n  \"level\": \"Excel Pre-Preliminary\",\n  \"musicLink\": \"https://www.youtube.com/watch?v=example\",\n  \"elements\": [\n    \"2S\",\n    \"1A\",\n    \"CSp\",\n    \"2A+1Eu+3S\"\n  ],\n  \"paths\": [\n    [\n      {\n        \"x\": 10,\n        \"y\": 20\n      },\n      {\n        \"x\": 30,\n        \"y\": 40\n      }\n    ],\n    [\n      {\n        \"x\": 50,\n        \"y\": 60\n      }\n    ]\n  ],\n  \"placements\": [\n    {\n      \"id\": \"p1\",\n      \"code\": \"2S\",\n      \"x\": 12.5,\n      \"y\": 22.5\n    }\n  ],\n  \"musicFileId\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Mai's showcase",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/programs/{{secondProgramId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 204\", () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "The showcase is gone → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs/{{secondProgramId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
                 ]
               }
             }
@@ -1531,7 +1737,7 @@
     },
     {
       "name": "8. Clean up",
-      "description": "Deletes Mai, and checks that her lessons went with her.",
+      "description": "Deletes Mai, and checks that her lessons and programs went with her.",
       "item": [
         {
           "name": "Delete Mai",
@@ -1582,6 +1788,24 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"Status is 404 (deleting a student deletes their lessons)\", () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Her program went with her → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/programs/{{programId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 404\", () => pm.response.to.have.status(404));"
                 ]
               }
             }

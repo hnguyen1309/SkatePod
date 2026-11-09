@@ -13,10 +13,20 @@ import {
   minutesFromDuration,
   noteFromApi,
   noteToApi,
+  DEFAULT_PROGRAM,
+  formatFileSize,
+  musicServiceName,
+  newProgramFor,
   programFromApi,
+  programHasChanges,
   programNotReady,
   programToApi,
   trackFromApi,
+  sortStudentsByName,
+  startsLaterNote,
+  weekOffsetOf,
+  upgradeOldPrograms,
+  type Program,
   minutesFromApiTime,
   studentToApi,
   toneFor,
@@ -489,54 +499,65 @@ describe("notes on the backend", () => {
   });
 });
 
-describe("programs on the backend", () => {
-  test("turns the backend's program into the app's, keeping combination titles", () => {
-    const program = programFromApi({
+describe("programs (several per student, with music)", () => {
+  const program = (changes: Partial<Program> = {}): Program => ({
+    ...DEFAULT_PROGRAM,
+    id: "p1",
+    studentId: "s1",
+    name: "Free skate",
+    musicLink: "",
+    musicFile: null,
+    ...changes,
+  });
+
+  test("turns the backend's program into the app's, keeping combination titles and the music", () => {
+    const result = programFromApi({
+      id: "p1",
       studentId: "s1",
-      saved: true,
+      name: "Free skate 2026-27",
       musicTitle: "Nocturne",
       artist: null,
       duration: "2:10",
       track: "EXCEL",
-      level: "Excel Bronze",
+      level: "Excel Juvenile",
+      musicLink: null,
+      musicFile: { id: "f1", fileName: "Nocturne.mp3", contentType: "audio/mpeg", sizeBytes: 300000 },
       elements: [
         { code: "1A", title: "Single Axel", category: "Jump" },
         { code: "1S+1T", title: "2 Jump Combination", category: "Jump" },
       ],
       paths: [[{ x: 1, y: 2 }]],
-      placements: [{ id: "p1", code: "1A", x: 3, y: 4 }],
+      placements: [{ id: "m1", code: "1A", x: 3, y: 4 }],
+      createdAt: "2026-11-08T05:00:00Z",
     });
-    assert.equal(program.track, "Excel");
-    assert.equal(program.artist, "");
-    assert.deepEqual(program.elements, [
-      { code: "1A", title: "Single Axel", category: "Jump" },
-      { code: "1S+1T", title: "2 Jump Combination", category: "Jump" },
-    ]);
-    assert.deepEqual(program.paths, [[{ x: 1, y: 2 }]]);
+    assert.equal(result.name, "Free skate 2026-27");
+    assert.equal(result.track, "Excel");
+    assert.equal(result.artist, "");
+    assert.equal(result.musicLink, "");
+    assert.equal(result.musicFile?.fileName, "Nocturne.mp3");
+    assert.deepEqual(result.elements[1], { code: "1S+1T", title: "2 Jump Combination", category: "Jump" });
   });
 
-  test("sends element codes and the backend's track name", () => {
-    const body = programToApi({
-      musicTitle: " Nocturne ",
-      artist: "",
-      duration: "2:10",
-      track: "Adult",
-      level: "Adult Bronze",
-      elements: [
-        { code: "2S", title: "Double Salchow", category: "Jump" },
-        { code: "StSq", title: "Step Sequence", category: "Sequence" },
-      ],
-      paths: [],
-      placements: [],
-    });
+  test("sends element codes, the backend's track name and only the music file's id", () => {
+    const body = programToApi(
+      program({
+        name: " Free skate ",
+        track: "Adult",
+        level: "Adult Bronze",
+        musicLink: " https://open.spotify.com/track/1 ",
+        musicFile: { id: "f1", fileName: "a.mp3", contentType: "audio/mpeg", sizeBytes: 1 },
+        elements: [{ code: "2S", title: "Double Salchow", category: "Jump" }],
+      }),
+    );
+    assert.equal(body.name, "Free skate");
     assert.equal(body.track, "ADULT");
-    assert.equal(body.musicTitle, "Nocturne");
-    assert.deepEqual(body.elements, ["2S", "StSq"]);
+    assert.equal(body.musicLink, "https://open.spotify.com/track/1");
+    assert.equal(body.musicFileId, "f1");
+    assert.deepEqual(body.elements, ["2S"]);
   });
 
   test("a level that isn't on the track is fixed before sending", () => {
-    const body = programToApi({ musicTitle: "A", artist: "", duration: "2:10", track: "Excel", level: "Juvenile", elements: [], paths: [], placements: [] });
-    assert.equal(body.level, "Excel Pre-Preliminary");
+    assert.equal(programToApi(program({ track: "Excel", level: "Juvenile" })).level, "Excel Pre-Preliminary");
   });
 
   test("every backend track maps to the app's", () => {
@@ -545,11 +566,103 @@ describe("programs on the backend", () => {
     assert.equal(trackFromApi("ADULT"), "Adult");
   });
 
-  test("half-typed programs wait before they're saved", () => {
-    assert.equal(programNotReady({ musicTitle: "Nocturne", duration: "2:10" }), null);
-    assert.equal(programNotReady({ musicTitle: "Nocturne", duration: "12:05" }), null);
-    assert.match(programNotReady({ musicTitle: "Nocturne", duration: "2:" }) ?? "", /duration/);
-    assert.match(programNotReady({ musicTitle: "Nocturne", duration: "2:75" }) ?? "", /duration/);
-    assert.match(programNotReady({ musicTitle: "  ", duration: "2:10" }) ?? "", /title/);
+  test("a new program starts on the student's freeskate track and level, with no name", () => {
+    const lily = newProgramFor(
+      {
+        id: "s1",
+        disciplines: [
+          { discipline: "PATTERN_DANCE", level: "Bronze" },
+          { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Excel Juvenile" },
+        ],
+      },
+      "new1",
+    );
+    assert.equal(lily.track, "Excel");
+    assert.equal(lily.level, "Excel Juvenile");
+    assert.equal(lily.name, "");
+    assert.equal(lily.studentId, "s1");
+    assert.equal(lily.id, "new1");
+    assert.deepEqual(lily.elements, DEFAULT_PROGRAM.elements);
+
+    // Adult freeskate without a stored track gets the Adult track; a level not on the track starts at the first.
+    const noah = newProgramFor({ id: "s2", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Gold" }] }, "new2");
+    assert.equal(noah.track, "Adult");
+    assert.equal(noah.level, "Adult Pre-Bronze");
+
+    const none = newProgramFor({ id: "s3", disciplines: [] }, "new3");
+    assert.equal(none.track, "Championship");
+    assert.equal(none.level, "Preliminary");
+  });
+
+  test("names where a music link opens", () => {
+    assert.equal(musicServiceName("https://www.youtube.com/watch?v=abc"), "YouTube");
+    assert.equal(musicServiceName("https://youtu.be/abc"), "YouTube");
+    assert.equal(musicServiceName("https://music.youtube.com/watch?v=abc"), "YouTube Music");
+    assert.equal(musicServiceName("https://open.spotify.com/track/1"), "Spotify");
+    assert.equal(musicServiceName("https://music.apple.com/us/album/1"), "Apple Music");
+    assert.equal(musicServiceName("https://example.org/song"), "example.org");
+    assert.equal(musicServiceName("spotify"), null);
+  });
+
+  test("a program needs a name, a music title, a duration like 2:10 and a real link to save", () => {
+    const ready = { name: "Free skate", musicTitle: "Nocturne", duration: "2:10", musicLink: "" };
+    assert.equal(programNotReady(ready), null);
+    assert.equal(programNotReady({ ...ready, musicLink: "https://youtu.be/abc" }), null);
+    assert.match(programNotReady({ ...ready, name: " " }) ?? "", /name/);
+    assert.match(programNotReady({ ...ready, musicTitle: "" }) ?? "", /title/);
+    assert.match(programNotReady({ ...ready, duration: "2:" }) ?? "", /duration/);
+    assert.match(programNotReady({ ...ready, musicLink: "spotify song" }) ?? "", /link/);
+  });
+
+  test("Save turns on only when something changed", () => {
+    const saved = program();
+    assert.equal(programHasChanges(saved, { ...saved }), false);
+    assert.equal(programHasChanges(saved, { ...saved, level: "Juvenile" }), true);
+    assert.equal(programHasChanges(saved, { ...saved, musicFile: { id: "f1", fileName: "a.mp3", contentType: "audio/mpeg", sizeBytes: 1 } }), true);
+    assert.equal(programHasChanges(saved, { ...saved, elements: [] }), true);
+  });
+
+  test("file sizes read like 4.6 MB", () => {
+    assert.equal(formatFileSize(4812345), "4.6 MB");
+    assert.equal(formatFileSize(300000), "293 KB");
+    assert.equal(formatFileSize(10), "1 KB");
+  });
+
+  test("programs saved on the phone before Nov 2026 (one per student) are kept", () => {
+    const upgraded = upgradeOldPrograms({ s1: { ...DEFAULT_PROGRAM, musicTitle: "Nocturne" } });
+    assert.equal(upgraded.length, 1);
+    assert.equal(upgraded[0].id, "old-s1");
+    assert.equal(upgraded[0].studentId, "s1");
+    assert.equal(upgraded[0].name, "Program");
+    assert.equal(upgraded[0].musicTitle, "Nocturne");
+  });
+});
+
+describe("sortStudentsByName: students A to Z, like the backend's list", () => {
+  test("ignores upper/lower case and accents, and keeps the original list as it was", () => {
+    const students = [{ name: "Sofia" }, { name: "amelia" }, { name: "Élodie" }, { name: "Flow Skater" }, { name: "Emma" }];
+    assert.deepEqual(sortStudentsByName(students).map((student) => student.name), ["amelia", "Élodie", "Emma", "Flow Skater", "Sofia"]);
+    assert.equal(students[0].name, "Sofia");
+  });
+});
+
+describe("a lesson booked for a day that has already passed this week", () => {
+  // Sunday Nov 8, 2026, 5 PM: Saturday Nov 7 has passed, so a Saturday lesson booked now starts Nov 14.
+  const sunday = new Date(2026, 10, 8, 17, 0);
+  const saturdayLesson = { day: 5, start: 7 * 60 + 15, startDate: "2026-11-08" };
+
+  test("weekOffsetOf counts weeks from this one (Monday to Sunday)", () => {
+    assert.equal(weekOffsetOf(new Date(2026, 10, 2), sunday), 0); // Monday of this week
+    assert.equal(weekOffsetOf(new Date(2026, 10, 14), sunday), 1); // next Saturday
+    assert.equal(weekOffsetOf(new Date(2026, 10, 1), sunday), -1); // last Sunday
+  });
+
+  test("the clash alert says when a lesson that hasn't happened yet starts", () => {
+    assert.equal(startsLaterNote(saturdayLesson, sunday), " (starting Sat, Nov 14)");
+  });
+
+  test("no note for lessons that are already going, or have no dates", () => {
+    assert.equal(startsLaterNote({ ...saturdayLesson, startDate: "2026-10-01" }, sunday), "");
+    assert.equal(startsLaterNote({ day: 5, start: 600 }, sunday), "");
   });
 });

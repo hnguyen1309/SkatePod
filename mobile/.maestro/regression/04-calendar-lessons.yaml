@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Calendar lessons
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Calendar"
 - assertVisible: "Schedule"
 

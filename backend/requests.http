@@ -169,38 +169,57 @@ Content-Type: application/json
   "shared": false
 }
 
-### Lily's saved program (Excel track)
-GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000002/program
+### Lily's programs (she has two: a free skate and a showcase)
+GET {{baseUrl}}/programs?studentId=11111111-1111-1111-1111-000000000002
 
-### Noah has no program yet: a starting program on his Adult track (saved: false)
-GET {{baseUrl}}/students/11111111-1111-1111-1111-000000000005/program
+### Every student's programs
+GET {{baseUrl}}/programs
 
-### Save Emma's program (creates or replaces it)
-PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001/program
+### Add a program for Emma. musicFileId is optional: upload a file first (below) and paste its id.
+POST {{baseUrl}}/programs
 Content-Type: application/json
 
 {
+  "studentId": "11111111-1111-1111-1111-000000000001",
+  "name": "Free skate 2026-27",
   "musicTitle": "Swan Lake",
   "artist": "Tchaikovsky",
   "duration": "2:40",
   "track": "CHAMPIONSHIP",
   "level": "Juvenile",
-  "elements": ["2A", "FCCoSp", "2Lz", "StSq", "CCoSp"],
+  "musicLink": "https://www.youtube.com/watch?v=example",
+  "elements": ["2A", "FCCoSp", "2Lz+2T", "StSq", "CCoSp"],
   "paths": [[{ "x": 40, "y": 60 }, { "x": 120, "y": 80 }]],
   "placements": [{ "id": "p1", "code": "2A", "x": 120, "y": 80 }]
 }
 
 ### Level from another track → 400
-PUT {{baseUrl}}/students/11111111-1111-1111-1111-000000000001/program
+POST {{baseUrl}}/programs
 Content-Type: application/json
 
 {
+  "studentId": "11111111-1111-1111-1111-000000000001",
+  "name": "Free skate",
   "musicTitle": "Swan Lake",
   "duration": "2:40",
   "track": "EXCEL",
   "level": "Juvenile",
   "elements": ["2A"]
 }
+
+### Upload a music file (put an MP3 called song.mp3 next to this file first). Up to 20 MB.
+POST {{baseUrl}}/music
+Content-Type: multipart/form-data; boundary=SkatePod
+
+--SkatePod
+Content-Disposition: form-data; name="file"; filename="song.mp3"
+Content-Type: audio/mpeg
+
+< ./song.mp3
+--SkatePod--
+
+### Play an uploaded file (paste the id from the upload)
+GET {{baseUrl}}/music/00000000-0000-0000-0000-000000000000
 
 ### Tracks with their levels, and every program element
 GET {{baseUrl}}/tracks

@@ -581,30 +581,54 @@ export function noteToApi(note: Note): ApiNoteRequest {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Programs on the backend (one per student, at /api/students/{id}/program). The backend writes
-// tracks in capitals ("CHAMPIONSHIP") and only needs element codes, in skating order.
+// Programs. A student can have several (Nov 2026), each with a name the coach types. The music can
+// be a link (YouTube, Apple Music, Spotify...) and/or an audio file uploaded to the backend.
 
-/** A program as the backend sends it. `saved` is false for a student who has no program yet. */
-export type ApiProgram = {
+/** A music file uploaded to the backend (POST /api/music). It's played from GET /api/music/{id}. */
+export type MusicFile = { id: string; fileName: string; contentType: string; sizeBytes: number };
+
+/** One of a student's programs: the layout (ProgramData) plus who it's for, its name and its music. */
+export type Program = ProgramData & {
+  id: string;
   studentId: string;
-  saved: boolean;
+  name: string; // what the coach calls it, like "Free skate 2026-27"
+  musicLink: string; // a web link to the music, or ""
+  musicFile: MusicFile | null;
+  createdAt?: string;
+};
+
+/** The biggest music file the backend takes (MusicFileService.MAX_BYTES). */
+export const MAX_MUSIC_BYTES = 20 * 1024 * 1024;
+
+/** A program as the backend sends it (GET /api/programs). Only the fields the app uses. */
+export type ApiProgram = {
+  id: string;
+  studentId: string;
+  name: string;
   musicTitle: string;
   artist: string | null;
   duration: string;
   track: ApiTrack;
   level: string;
+  musicLink: string | null;
+  musicFile: MusicFile | null;
   elements: { code: string; title: string; category: string }[];
   paths: RinkPoint[][];
   placements: RinkPlacement[];
+  createdAt: string | null;
 };
 
-/** What the backend expects for PUT /api/students/{id}/program. */
+/** What the backend expects for POST /api/programs and PUT /api/programs/{id}. */
 export type ApiProgramRequest = {
+  studentId: string;
+  name: string;
   musicTitle: string;
   artist: string;
   duration: string;
   track: ApiTrack;
   level: string;
+  musicLink: string;
+  musicFileId: string | null;
   elements: string[]; // codes, e.g. ["1A", "2S", "1S+1T", "StSq"]
   paths: RinkPoint[][];
   placements: RinkPlacement[];
@@ -616,13 +640,18 @@ export function trackFromApi(track: ApiTrack): Track {
   return (Object.keys(API_TRACKS) as Track[]).find((name) => API_TRACKS[name] === track) ?? "Championship";
 }
 
-export function programFromApi(program: ApiProgram): ProgramData {
+export function programFromApi(program: ApiProgram): Program {
   return {
+    id: program.id,
+    studentId: program.studentId,
+    name: program.name,
     musicTitle: program.musicTitle,
     artist: program.artist ?? "",
     duration: program.duration,
     track: trackFromApi(program.track),
     level: program.level,
+    musicLink: program.musicLink ?? "",
+    musicFile: program.musicFile,
     // Titles come from the app's own catalog when it knows the code, so they read the same as before.
     elements: program.elements.map(
       (element) =>
@@ -634,18 +663,23 @@ export function programFromApi(program: ApiProgram): ProgramData {
     ),
     paths: program.paths,
     placements: program.placements,
+    createdAt: program.createdAt ?? undefined,
   };
 }
 
-/** The body for PUT /api/students/{id}/program. A track and level that don't go together are fixed first. */
-export function programToApi(program: ProgramData): ApiProgramRequest {
+/** The body for POST/PUT /api/programs. A track and level that don't go together are fixed first. */
+export function programToApi(program: Program): ApiProgramRequest {
   const { track, level } = validTrackAndLevel(program.track, program.level);
   return {
+    studentId: program.studentId,
+    name: program.name.trim(),
     musicTitle: program.musicTitle.trim(),
     artist: program.artist.trim(),
     duration: program.duration.trim(),
     track: API_TRACKS[track],
     level,
+    musicLink: program.musicLink.trim(),
+    musicFileId: program.musicFile?.id ?? null,
     elements: program.elements.map((element) => element.code),
     paths: program.paths,
     placements: program.placements,
@@ -653,13 +687,89 @@ export function programToApi(program: ProgramData): ApiProgramRequest {
 }
 
 /**
- * Why a program can't be saved on the backend yet, or null if it can. The program is saved as the coach
- * types, so half-typed values ("2:" in Duration, an empty Music box) wait until they're finished.
+ * A new, unsaved program for a student: the starting layout (DEFAULT_PROGRAM) on the student's own
+ * track, so the coach rarely has to change it:
+ *  - Track: from their Standard Freeskate discipline, else Adult Freeskate, else their first discipline,
+ *    else Championship. (Students from the backend carry their track; others get defaultTrackFor.)
+ *  - Level: their level in that discipline if the track has it, else Preliminary on Championship,
+ *    else the track's first level.
+ * The name starts empty: the coach types it before saving.
  */
-export function programNotReady(program: Pick<ProgramData, "musicTitle" | "duration">): string | null {
-  if (!program.musicTitle.trim()) return "Give the music a title to save the program.";
-  if (!/^\d{1,2}:[0-5]\d$/.test(program.duration.trim())) return "Write the duration like 2:10 to save the program.";
+export function newProgramFor(student: Pick<Student, "id" | "disciplines">, id: string): Program {
+  const rank = (discipline: DisciplineId) =>
+    discipline === "STANDARD_FREESKATE" ? -2 : discipline === "ADULT_FREESKATE" ? -1 : DISCIPLINES.findIndex((item) => item.id === discipline);
+  const singles = [...student.disciplines].sort((a, b) => rank(a.discipline) - rank(b.discipline))[0];
+  const track = singles ? trackFromApi(singles.track ?? defaultTrackFor(singles.discipline)) : "Championship";
+  const levels = TRACK_LEVELS[track] as readonly string[];
+  const level = singles && levels.includes(singles.level) ? singles.level : track === "Championship" ? "Preliminary" : levels[0];
+  return { ...DEFAULT_PROGRAM, id, studentId: student.id, name: "", musicLink: "", musicFile: null, track, level };
+}
+
+/** "YouTube" for a YouTube link, and so on: shown next to the link so the coach sees where it opens. */
+export function musicServiceName(link: string): string | null {
+  const match = /^https?:\/\/([^/?#]+)/i.exec(link.trim());
+  if (!match) return null;
+  const host = match[1].toLowerCase().replace(/^www\./, "");
+  const services: [RegExp, string][] = [
+    [/^music\.youtube\.com$/, "YouTube Music"],
+    [/(^|\.)youtube\.com$|^youtu\.be$/, "YouTube"],
+    [/(^|\.)spotify\.com$/, "Spotify"],
+    [/^music\.apple\.com$/, "Apple Music"],
+    [/(^|\.)soundcloud\.com$/, "SoundCloud"],
+    [/^music\.amazon\./, "Amazon Music"],
+    [/(^|\.)drive\.google\.com$/, "Google Drive"],
+    [/(^|\.)dropbox\.com$/, "Dropbox"],
+  ];
+  return services.find(([pattern]) => pattern.test(host))?.[1] ?? host;
+}
+
+/**
+ * Why a program can't be saved yet, or null if it can. Checked when the coach taps Save, with the same
+ * rules the backend uses (ProgramRequest), so the coach gets a clear message instead of a 400.
+ */
+export function programNotReady(program: Pick<Program, "name" | "musicTitle" | "duration" | "musicLink">): string | null {
+  if (!program.name.trim()) return "Give the program a name, like “Free skate 2026-27”.";
+  if (!program.musicTitle.trim()) return "Give the music a title.";
+  if (!/^\d{1,2}:[0-5]\d$/.test(program.duration.trim())) return "Write the duration like 2:10.";
+  const link = program.musicLink.trim();
+  if (link && !/^https?:\/\/\S+$/i.test(link)) return "The music link needs to be a web link starting with https://.";
   return null;
+}
+
+/** True when the program in the editor differs from the saved one, so Save turns on (and closing asks first). */
+export function programHasChanges(saved: Program, draft: Program) {
+  return JSON.stringify(programToApi(saved)) !== JSON.stringify(programToApi(draft)) || saved.name !== draft.name;
+}
+
+/** 4812345 → "4.6 MB", 300000 → "293 KB". */
+export function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/**
+ * Programs saved on a phone before Nov 2026 were one per student ({ studentId: program }). This turns
+ * them into the new list so none are lost. Their id is fixed, so upgrading twice gives the same ids.
+ */
+export function upgradeOldPrograms(old: Record<string, ProgramData>): Program[] {
+  return Object.entries(old).map(([studentId, program]) => ({
+    ...DEFAULT_PROGRAM,
+    ...program,
+    id: `old-${studentId}`,
+    studentId,
+    name: "Program",
+    musicLink: "",
+    musicFile: null,
+  }));
+}
+
+/**
+ * Students A to Z, ignoring upper/lower case and accents ("élodie" sits with the E's), like the backend's
+ * list (GET /api/students is ordered by name). Used after adding or renaming a student on the backend,
+ * so the list doesn't change order when the app next reloads it.
+ */
+export function sortStudentsByName<T extends Pick<Student, "name">>(students: T[]): T[] {
+  return [...students].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
 }
 
 export function newId() {
@@ -1012,6 +1122,23 @@ export function fromDateKey(key: string) {
 }
 
 /** Is the weekly lesson running on this calendar day (between its start and end dates)? */
+/** How many weeks from this week `date` falls in: 0 = this week, 1 = next week, -1 = last week. */
+export function weekOffsetOf(date: Date, today = new Date()) {
+  return Math.round((startOfWeek(date).getTime() - startOfWeek(today).getTime()) / (7 * 24 * 60 * 60 * 1000));
+}
+
+/**
+ * " (starting Sat, Nov 14)" for a weekly lesson that hasn't happened yet, "" otherwise. A lesson booked
+ * today for a day that has already passed this week only starts next week, so it isn't on this week's
+ * calendar, yet it still makes that time taken: the clash alert says when it starts, so that makes sense.
+ */
+export function startsLaterNote(lesson: Pick<Lesson, "day" | "start" | "startDate" | "endDate">, now = new Date()) {
+  if (!lesson.startDate) return ""; // lessons without dates have always been on
+  const first = nextLessonTime(lesson, fromDateKey(lesson.startDate));
+  if (!first || first <= now) return "";
+  return ` (starting ${first.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })})`;
+}
+
 export function isLessonActiveOn(lesson: Pick<Lesson, "startDate" | "endDate">, date: Date) {
   const key = toDateKey(date);
   return (!lesson.startDate || key >= lesson.startDate) && (!lesson.endDate || key <= lesson.endDate);

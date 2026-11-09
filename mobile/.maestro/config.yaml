@@ -1,0 +1,8 @@
+# Which flows `maestro test .maestro` runs. Without this, Maestro only looks at the top folder.
+#   regression/  the main flow of each tab (one per area), run before every commit
+#   edge-cases/  the unusual paths: refused saves, cancels, empty results, limits
+# backend/ isn't listed: its front-to-back flow needs the backend running (see backend/full-flow.yaml).
+# subflows/ are steps the flows share (open the app, reset to sample data), not flows of their own.
+flows:
+  - regression/*
+  - edge-cases/*

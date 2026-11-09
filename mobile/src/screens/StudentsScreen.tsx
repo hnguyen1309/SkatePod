@@ -80,7 +80,7 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
 
   function remove(student: Student) {
-    Alert.alert("Delete student?", `${student.name} will be removed. Their notes and lessons stay but show as "Removed student".`, [
+    Alert.alert("Delete student?", `This deletes ${student.name} and everything that's theirs: weekly lessons, lesson notes, programs and their music files. It can't be undone.`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
@@ -162,7 +162,10 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
             <Label>Training snapshot</Label>
             <DetailRow label="Weekly lessons" value={String(lessons.filter((lesson) => lesson.studentId === detail.id).length)} />
             <DetailRow label="Lesson notes" value={String(notes.filter((note) => note.studentId === detail.id).length)} />
-            <DetailRow label="Program" value={programs[detail.id]?.musicTitle ?? "Not started"} />
+            <DetailRow
+              label="Programs"
+              value={programs.filter((program) => program.studentId === detail.id).map((program) => program.name).join(", ") || "Not started"}
+            />
             <View style={{ height: 1, backgroundColor: colors.borderSoft, marginVertical: 16 }} />
             <Label>Next lesson</Label>
             <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 18 }}>

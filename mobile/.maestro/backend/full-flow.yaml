@@ -1,0 +1,266 @@
+# Front to back: taps in the app go all the way to the backend and its database, and come back.
+# Needs: the backend running, mobile/.env with EXPO_PUBLIC_API_URL (Simulator: http://localhost:8080/api),
+# and `npx expo start`. Run (from mobile/): sh run-ui-tests.sh .maestro/backend/full-flow.yaml
+# It lives in a subfolder so the normal suite (`sh run-ui-tests.sh`, phone-only) doesn't run it.
+# Everything it makes uses the made-up name "Flow Skater" and is deleted at the end.
+appId: host.exp.Exponent   # Expo Go (the app runs inside it, so not com.hnguyen1309.skatepod)
+name: Front to back (backend)
+tags: [backend, e2e]
+env:
+  STUDENT: Flow Skater      # letters and spaces only: typing a digit after a letter can stall the iOS keyboard
+  PROGRAM: Flow Free skate
+---
+# 1. Launch: open SkatePod fresh in Expo Go and wait until it has loaded.
+#    (subflows/open.yaml.) No sample-data reset here: this flow makes and deletes its own backend data.
+- runFlow: ../subflows/open.yaml
+
+# 2. Connection: Settings says data lives on the backend, and Test connection gets an answer.
+- tapOn: "Settings"
+- assertVisible: ".*saved on the backend.*"
+- scrollUntilVisible:
+    element: "Test connection"
+- tapOn: "Test connection"
+- extendedWaitUntil:
+    visible: "Connected"    # the alert: "The backend answered in … ms and has … students."
+    timeout: 15000
+- tapOn: "OK"
+
+# 3. Clean start: delete a "Flow Skater" left on the backend by an earlier run that stopped halfway.
+#    (Edit profile → Delete → confirm, so this run doesn't make a second one.)
+- tapOn: "Students"
+- repeat:
+    times: 3
+    while:
+      visible: ".*${STUDENT}.*"
+    commands:
+      - tapOn: ".*${STUDENT}.*"
+      - tapOn: "Edit profile"
+      - scrollUntilVisible:
+          element: "Delete"
+      - tapOn: "Delete"
+      - assertVisible: "Delete student\\?"
+      # The alert's Delete comes first in the screen tree; the sheet's own Delete button is second.
+      - tapOn:
+          text: "Delete"
+          index: 0
+      - waitForAnimationToEnd
+
+# 4. Students: add "Flow Skater" with two disciplines, Freeskate and Skills (POST /api/students).
+- tapOn: "Add student"
+- assertVisible: "Student name"
+- tapOn:
+    text: "Student name"
+    index: 1                # index 0 is the label, 1 is the text box
+- inputText: ${STUDENT}
+- pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)
+# Two disciplines, each with its own level (the backend keeps a track per discipline too).
+# Option labels are "Category · Discipline"; brackets are escaped because Maestro matches a regex.
+- tapOn:
+    text: "Add a discipline"
+    index: 1
+- scrollUntilVisible:
+    element: "Singles · Standard Track \\(Freeskate\\)"
+- tapOn: "Singles · Standard Track \\(Freeskate\\)"
+- assertVisible: "Level"
+- tapOn:
+    text: "Add another discipline"   # the picker's name once one discipline is in
+    index: 1
+- scrollUntilVisible:
+    element: "Skating Skills · Standard Track \\(Skills\\)"
+- tapOn: "Skating Skills · Standard Track \\(Skills\\)"
+- scrollUntilVisible:
+    element: "Save student"
+- tapOn: "Save student"
+- waitForAnimationToEnd
+- scrollUntilVisible:
+    element: ".*${STUDENT}.*"
+- assertVisible: ".*${STUDENT}.*Not scheduled.*"   # no lessons yet
+
+# 5. Calendar: book them a weekly Sunday lesson (POST /api/lessons; the backend checks double booking).
+- tapOn: "Calendar"
+- tapOn: "Add lesson"
+- assertVisible: "Schedule lesson"
+# Student and day are rows of chips that run off the right edge (like 04-calendar-lessons.yaml).
+# Students are A to Z (like the backend's list, even right after adding one), so the student is usually in
+# view; if not, swipe the student row (21% down) until it is.
+- repeat:
+    times: 4
+    while:
+      notVisible: ${STUDENT}
+    commands:
+      - swipe:
+          start: 90%, 21%
+          end: 50%, 21%
+          duration: 600
+- tapOn: ${STUDENT}
+# Sunday is the last day chip: one long swipe of the day row (29% down) brings it into view.
+- swipe:
+    start: 92%, 29%
+    end: 5%, 29%
+    duration: 600
+- tapOn: "SUN"
+- tapOn:
+    text: "Schedule lesson"
+    index: 1                # the button (index 0 is the sheet's title)
+- waitForAnimationToEnd
+# If the time is taken (the app's check, or the backend's 409), the editor stays open with this alert.
+- assertNotVisible: "That time is taken"
+
+# 6. Calendar: a second lesson on Thursday at a time picked by tapping the grid, 30 minutes long.
+#    (Changing the time on the iOS wheel isn't reliable in Maestro; a tap on an empty spot opens the
+#    editor at that spot's time, so the exact time depends on where the grid is scrolled.)
+- tapOn: "Day"
+- tapOn: "THU.*"
+- waitForAnimationToEnd
+- tapOn:
+    point: 60%, 62%          # an empty spot in Thursday's column
+- runFlow:
+    when:
+      notVisible: "Schedule lesson"
+    commands:                # the tap landed on a lesson and opened its preview: close it, tap lower down
+      - runFlow:
+          when:
+            visible: "Close preview"
+          commands:
+            - tapOn: "Close preview"
+      - tapOn:
+          point: 60%, 80%
+- assertVisible: "Every Thursday at .*"
+- tapOn: ${STUDENT}          # the student chip
+- tapOn:
+    text: "Duration \\(minutes\\)"
+    index: 1
+- eraseText: 5
+- inputText: "30"            # digits only, on the number pad (it has no Return key, so tap on)
+- tapOn:
+    text: "Schedule lesson"
+    index: 1
+- waitForAnimationToEnd
+- assertNotVisible: "That time is taken"
+- assertVisible: ".*${STUDENT}.*30m.*"   # the card's label: "Flow Skater · Public · 30m"
+
+# 7. Calendar availability: add Friday 3–6 PM at "Flow Rink", see the legend, then delete the block.
+#    (Availability is still kept on the phone, not on the backend yet: SKATE-98.)
+- tapOn: "Week"
+- tapOn: "Availability.*"
+- assertVisible: "Add a block"
+# The default block is 3:00 PM–6:00 PM on today's weekday; put it on Friday with a place.
+- tapOn: "FRI"
+- tapOn:
+    text: "Place \\(optional\\)"
+    index: 1
+- inputText: "Flow Rink"
+- pressKey: Enter
+- tapOn: "Add block"
+- assertVisible: "Friday · 3:00 PM–6:00 PM"
+- assertVisible: "Flow Rink"
+- tapOn: "Done"
+- assertVisible: "Availability \\(\\d+\\)"   # the button now counts the blocks
+# With a block set, the legend explains the shading (time outside the blocks is striped).
+- scrollUntilVisible:
+    element: "Not available"
+- assertVisible: "Available"
+# Delete the block again, so the calendar is as it was.
+- scrollUntilVisible:
+    element: "Availability \\(\\d+\\)"
+    direction: UP
+- tapOn: "Availability \\(\\d+\\)"
+- tapOn: "Delete block"
+- assertNotVisible: "Friday · 3:00 PM–6:00 PM"
+- tapOn: "Done"
+
+# 8. Students: their card now shows a next lesson, worked out from the backend's lesson.
+- tapOn: "Students"
+- scrollUntilVisible:
+    element: ".*${STUDENT}.*"
+- assertNotVisible: ".*${STUDENT}.*Not scheduled.*"
+
+# 9. Lessons tab: add a past lesson note for them (POST /api/notes).
+- tapOn: "Lessons"
+- tapOn: "Add a past lesson"
+- assertVisible: "Add past lesson"
+- tapOn: ${STUDENT}        # a student chip (A to Z, so near the start of the row)
+- tapOn: "Skills, program sections, or goals covered..."
+- inputText: "Flow edges and crossovers"
+- pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)
+- scrollUntilVisible:
+    element: "Save note"
+- tapOn: "Save note"
+- waitForAnimationToEnd
+- assertVisible: ".*${STUDENT}.*"
+
+# 10. Programs: add a program, name it "Flow Free skate"; Save stays grey until something changes.
+- tapOn: "Programs"
+- tapOn:
+    text: "Student"
+    index: 1
+- tapOn: ${STUDENT}
+- assertVisible: "No programs yet"
+- tapOn: "Add a program"
+- scrollUntilVisible:
+    element: "Not saved yet: give the program a name to start."   # Save is grey: nothing to save yet
+- scrollUntilVisible:
+    element: "Program name"
+    direction: UP
+- tapOn:
+    text: "Program name"
+    index: 1
+- inputText: ${PROGRAM}
+- pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)
+
+# 11. Music link: paste a YouTube link and see "Open in YouTube".
+#    (Uploading a file needs the iOS file picker, which Maestro can't drive; check that by hand.)
+- scrollUntilVisible:
+    element: "Music link"
+- tapOn:
+    text: "Music link"
+    index: 1
+- inputText: "https://www.youtube.com/watch?v=flow"
+- pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)
+- assertVisible: "Open in YouTube"
+
+# 12. Save the program (POST /api/programs) and see "All changes saved."
+- scrollUntilVisible:
+    element: "Save program"
+- assertVisible: "You have unsaved changes."   # Save is on
+- tapOn: "Save program"
+- extendedWaitUntil:
+    visible: "All changes saved."   # the backend answered; Save is grey again
+    timeout: 10000
+
+# 13. Reopen the app: the program is still there, loaded from the backend (GET /api/programs).
+- runFlow: ../subflows/open.yaml
+- tapOn: "Programs"
+- tapOn:
+    text: "Student"
+    index: 1
+- tapOn: ${STUDENT}
+- assertVisible: ".*${PROGRAM}.*"
+
+# 14. Delete the program with its trash can, after confirming (DELETE /api/programs/{id}).
+- tapOn: "Delete ${PROGRAM}"
+- assertVisible: "Delete “${PROGRAM}”\\?"
+- tapOn: "Delete"
+- waitForAnimationToEnd
+- assertVisible: "No programs yet"
+
+# 15. Clean up: delete "Flow Skater" with their two lessons and note (DELETE /api/students/{id}).
+#     The backend deletes their lesson, note, programs and music files too (SKATE-109), so it's as it was.
+#     Deleting is in the profile's editor: Edit profile → Delete → confirm.
+- tapOn: "Students"
+- scrollUntilVisible:
+    element: ".*${STUDENT}.*"
+- tapOn: ".*${STUDENT}.*"
+- assertVisible: "Training snapshot"
+- tapOn: "Edit profile"
+- assertVisible: "Edit student"
+- scrollUntilVisible:
+    element: "Delete"
+- tapOn: "Delete"
+- assertVisible: "Delete student\\?"
+# The alert's Delete comes first in the screen tree; the sheet's own Delete button is second.
+- tapOn:
+    text: "Delete"
+    index: 0
+- waitForAnimationToEnd
+- assertNotVisible: ".*${STUDENT}.*"

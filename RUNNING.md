@@ -46,6 +46,8 @@ dropdb skatepod && createdb -O skatepod skatepod
 
 Then start the backend again. It recreates the tables and the sample students and lessons.
 
+Do this after pulling a change with a new migration (a new `V…sql` file) too. Otherwise the backend stops with "Detected resolved migration not applied to database", because the sample data is already in.
+
 ## 2. Backend (Spring Boot API)
 
 ```bash
@@ -76,9 +78,18 @@ Stop it with **Ctrl+C**.
 3. Start the backend (step 2), then restart Expo (`npx expo start`). Expo only reads `.env` when it starts.
 4. In the app: **Settings → Test connection**. It should say "Connected".
 
-Every tap that saves a student, a lesson or a note prints a line in both terminals, e.g. `→ PUT /lessons/… 200` in the Expo terminal and `PUT /api/lessons/… → 200` in the backend terminal. The calendar and the Lessons tab then show the backend's data (the sample data from the dev database), not the phone's. The Lessons tab asks the backend for notes once a minute (`GET /api/notes`), which is when the backend adds an entry for each lesson that has started. Programs save a moment after you stop typing (`PUT /api/students/…/program`). Availability still stays on the phone for now. The phone has to be on the same Wi-Fi as the Mac, even with `--tunnel`. Delete `.env` (and restart Expo) to go back to phone-only.
+Every tap that saves a student, a lesson or a note prints a line in both terminals, e.g. `→ PUT /lessons/… 200` in the Expo terminal and `PUT /api/lessons/… → 200` in the backend terminal. The calendar and the Lessons tab then show the backend's data (the sample data from the dev database), not the phone's. The Lessons tab asks the backend for notes once a minute (`GET /api/notes`), which is when the backend adds an entry for each lesson that has started. Programs save when you tap **Save program** (`POST` or `PUT /api/programs`), and an uploaded music file shows as `POST /api/music`. Uploaded files are kept in `backend/uploads/music`. Availability still stays on the phone for now. The phone has to be on the same Wi-Fi as the Mac, even with `--tunnel`. Delete `.env` (and restart Expo) to go back to phone-only.
 
-UI tests (Maestro, on the iOS Simulator): with `npx expo start` running and the app open in the Simulator (press **i**), run `sh run-ui-tests.sh` from `mobile/` in a second terminal. It resets the app to sample data. Setup steps are in `mobile/README.md`.
+**Phone not on the Mac's Wi-Fi (or using `--tunnel`)?** The Expo tunnel only carries the app, not the backend, so the phone says it can't connect to the backend. Give the backend its own tunnel:
+
+1. Once: `brew install cloudflared`
+2. With the backend running, in its own Terminal tab: `cloudflared tunnel --url http://localhost:8080`. It prints an address like `https://something-random.trycloudflare.com`.
+3. In `mobile/.env`: `EXPO_PUBLIC_API_URL=https://something-random.trycloudflare.com/api` (your address, plus `/api`).
+4. Restart Expo (`npx expo start --tunnel`). Expo only reads `.env` when it starts.
+
+The address changes every time cloudflared starts, so redo steps 2–4 each time. Anyone with the link can reach your dev backend (there's no login), so keep only the made-up sample data in it and stop the tunnel (Ctrl+C) when you're done.
+
+UI tests (Maestro, on the iOS Simulator): with `npx expo start` running and the app open in the Simulator (press **i**), run `sh run-ui-tests.sh` from `mobile/` in a second terminal (regression + edge cases; add a folder or file to run less, like `.maestro/edge-cases`). It resets the app to sample data. Setup steps are in `mobile/README.md`.
 
 ## Seeing the database
 

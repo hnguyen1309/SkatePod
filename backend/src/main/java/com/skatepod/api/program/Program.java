@@ -1,6 +1,7 @@
 package com.skatepod.api.program;
 
 import com.skatepod.api.common.BaseEntity;
+import com.skatepod.api.music.MusicFile;
 import com.skatepod.api.student.Student;
 import com.skatepod.api.student.Track;
 import jakarta.persistence.CollectionTable;
@@ -11,7 +12,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import java.util.ArrayList;
@@ -19,16 +20,21 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * A student's program layout (the app's Programs tab): music, track and level, the elements in
- * skating order, and the rink map. Each student has at most one.
+ * One of a student's programs (the app's Programs tab): a name, the music (title, a link and/or an
+ * uploaded file), track and level, the elements in skating order, and the rink map.
+ * A student can have several, like a free skate and a showcase.
  */
 @Entity
 @Table(name = "programs")
 public class Program extends BaseEntity {
 
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "student_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "student_id", nullable = false)
     private Student student;
+
+    /** What the coach calls it, like "Free skate 2026-27". */
+    @Column(nullable = false, length = 80)
+    private String name;
 
     @Column(name = "music_title", nullable = false, length = 120)
     private String musicTitle;
@@ -46,6 +52,15 @@ public class Program extends BaseEntity {
 
     @Column(nullable = false, length = 60)
     private String level;
+
+    /** A web link to the music (YouTube, Apple Music, Spotify...), or null. */
+    @Column(name = "music_link", length = 500)
+    private String musicLink;
+
+    /** The uploaded music file, or null. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "music_file_id")
+    private MusicFile musicFile;
 
     /** Element codes (e.g. "2S") in skating order. */
     @ElementCollection
@@ -68,14 +83,19 @@ public class Program extends BaseEntity {
         // Required by JPA.
     }
 
-    public Program(Student student, String musicTitle, String artist, String duration, Track track, String level,
-                   List<String> elements, List<ProgramPathPoint> pathPoints, List<ProgramPlacement> placements) {
+    public Program(Student student, String name, String musicTitle, String artist, String duration, Track track,
+                   String level, String musicLink, MusicFile musicFile, List<String> elements,
+                   List<ProgramPathPoint> pathPoints, List<ProgramPlacement> placements) {
         this.student = student;
-        update(musicTitle, artist, duration, track, level, elements, pathPoints, placements);
+        update(name, musicTitle, artist, duration, track, level, musicLink, musicFile, elements, pathPoints, placements);
     }
 
-    public void update(String musicTitle, String artist, String duration, Track track, String level,
-                       List<String> elements, List<ProgramPathPoint> pathPoints, List<ProgramPlacement> placements) {
+    public void update(String name, String musicTitle, String artist, String duration, Track track, String level,
+                       String musicLink, MusicFile musicFile, List<String> elements,
+                       List<ProgramPathPoint> pathPoints, List<ProgramPlacement> placements) {
+        this.name = name;
+        this.musicLink = musicLink;
+        this.musicFile = musicFile;
         this.musicTitle = musicTitle;
         this.artist = artist;
         this.duration = duration;
@@ -92,6 +112,18 @@ public class Program extends BaseEntity {
 
     public Student getStudent() {
         return student;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getMusicLink() {
+        return musicLink;
+    }
+
+    public MusicFile getMusicFile() {
+        return musicFile;
     }
 
     public String getMusicTitle() {

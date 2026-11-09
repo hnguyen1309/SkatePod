@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Settings
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Settings"
 - assertVisible: "Coach profile"
 

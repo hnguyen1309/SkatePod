@@ -2,20 +2,19 @@ package com.skatepod.api.program;
 
 import com.skatepod.api.common.BadRequestException;
 import com.skatepod.api.common.NotFoundException;
+import com.skatepod.api.music.MusicFile;
+import com.skatepod.api.music.MusicFileService;
+import com.skatepod.api.music.dto.MusicFileResponse;
 import com.skatepod.api.program.dto.PlacementDto;
 import com.skatepod.api.program.dto.ProgramRequest;
 import com.skatepod.api.program.dto.ProgramResponse;
 import com.skatepod.api.program.dto.RinkPointDto;
-import com.skatepod.api.student.Discipline;
 import com.skatepod.api.student.Student;
-import com.skatepod.api.student.StudentDiscipline;
 import com.skatepod.api.student.StudentRepository;
-import com.skatepod.api.student.Track;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -24,87 +23,114 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ProgramService {
 
-    // What a new program starts with, like DEFAULT_PROGRAM in the app.
-    static final String DEFAULT_TITLE = "Untitled program";
-    static final String DEFAULT_DURATION = "2:10";
-
     private final ProgramRepository programs;
     private final StudentRepository students;
+    private final MusicFileService musicFiles;
 
-    public ProgramService(ProgramRepository programs, StudentRepository students) {
+    public ProgramService(ProgramRepository programs, StudentRepository students, MusicFileService musicFiles) {
         this.programs = programs;
         this.students = students;
+        this.musicFiles = musicFiles;
     }
 
-    /** The student's saved program, or the starting program on their own track if they don't have one yet. */
+    /** Every program, or one student's, oldest first. A student without any just has none. */
     @Transactional(readOnly = true)
-    public ProgramResponse get(UUID studentId) {
-        Student student = findStudent(studentId);
-        return programs.findByStudentId(studentId)
-                .map(ProgramService::toResponse)
-                .orElseGet(() -> startingProgram(student));
+    public List<ProgramResponse> list(UUID studentId) {
+        List<Program> found = studentId == null
+                ? programs.findAllByOrderByCreatedAtAsc()
+                : programs.findByStudentIdOrderByCreatedAtAsc(studentId);
+        return found.stream().map(ProgramService::toResponse).toList();
     }
 
-    /** Saves (creates or replaces) the student's program. */
+    @Transactional(readOnly = true)
+    public ProgramResponse get(UUID id) {
+        return toResponse(findProgram(id));
+    }
+
     @Transactional
-    public ProgramResponse save(UUID studentId, ProgramRequest request) {
-        Student student = findStudent(studentId);
+    public ProgramResponse create(ProgramRequest request) {
+        Student student = findStudent(request.studentId());
+        Checked checked = check(request);
+        Program program = programs.save(new Program(student, request.name().trim(), request.musicTitle().trim(),
+                blankToNull(request.artist()), request.duration(), request.track(), checked.level(),
+                blankToNull(request.musicLink()), checked.musicFile(), checked.elements(), checked.points(),
+                checked.placements()));
+        return toResponse(program);
+    }
+
+    @Transactional
+    public ProgramResponse update(UUID id, ProgramRequest request) {
+        Program program = findProgram(id);
+        if (!program.getStudent().getId().equals(request.studentId())) {
+            throw new BadRequestException("A program stays with its student: make a new program for the other student");
+        }
+        Checked checked = check(request);
+        MusicFile oldFile = program.getMusicFile();
+        program.update(request.name().trim(), request.musicTitle().trim(), blankToNull(request.artist()),
+                request.duration(), request.track(), checked.level(), blankToNull(request.musicLink()),
+                checked.musicFile(), checked.elements(), checked.points(), checked.placements());
+        // A replaced or removed file isn't needed any more (unless another program uses it too).
+        if (oldFile != null && !Objects.equals(oldFile.getId(), idOf(checked.musicFile()))) {
+            deleteFileIfUnused(oldFile);
+        }
+        return toResponse(program);
+    }
+
+    /** Deletes a program, and its music file if no other program uses it. */
+    @Transactional
+    public void delete(UUID id) {
+        Program program = findProgram(id);
+        MusicFile file = program.getMusicFile();
+        programs.delete(program);
+        programs.flush(); // so the count below no longer sees this program
+        if (file != null) deleteFileIfUnused(file);
+    }
+
+    /**
+     * Deletes all of a student's programs and their music files (StudentService.delete calls this before
+     * deleting the student). The database would delete the programs by itself (ON DELETE CASCADE), but not
+     * the files on disk, so it's done here. A file another student's program also uses is kept.
+     *
+     * Every program belongs to exactly one student today, so all of them go. Programs shared by a team
+     * (pairs, synchro, Theatre On Ice) will need different rules when they come; that's out of scope for now.
+     */
+    @Transactional
+    public void deleteAllFor(UUID studentId) {
+        List<Program> theirs = programs.findByStudentIdOrderByCreatedAtAsc(studentId);
+        List<MusicFile> files = theirs.stream().map(Program::getMusicFile).filter(Objects::nonNull).distinct().toList();
+        programs.deleteAll(theirs);
+        programs.flush(); // so the counts below no longer see these programs
+        files.forEach(this::deleteFileIfUnused);
+    }
+
+    /** What a valid request turns into: the level, element codes, rink map and music file. */
+    private record Checked(String level, List<String> elements, List<ProgramPathPoint> points,
+                           List<ProgramPlacement> placements, MusicFile musicFile) {
+    }
+
+    private Checked check(ProgramRequest request) {
         String level = request.level().trim();
         if (!request.track().hasLevel(level)) {
             throw new BadRequestException(level + " is not a level in the " + request.track().getDisplayName() + " track");
         }
         List<String> elements = request.elements().stream().map(String::trim).toList();
         elements.forEach(ProgramService::checkCode);
-        List<ProgramPathPoint> points = toPathPoints(request.paths());
-        List<ProgramPlacement> placements = toPlacements(request.placements());
-        String artist = request.artist() == null || request.artist().isBlank() ? null : request.artist().trim();
+        MusicFile file = request.musicFileId() == null ? null : musicFiles.find(request.musicFileId());
+        return new Checked(level, elements, toPathPoints(request.paths()), toPlacements(request.placements()), file);
+    }
 
-        Optional<Program> existing = programs.findByStudentId(studentId);
-        Program program;
-        if (existing.isPresent()) {
-            program = existing.get();
-            program.update(request.musicTitle().trim(), artist, request.duration(), request.track(), level,
-                    elements, points, placements);
-        } else {
-            program = programs.save(new Program(student, request.musicTitle().trim(), artist, request.duration(),
-                    request.track(), level, elements, points, placements));
+    private void deleteFileIfUnused(MusicFile file) {
+        if (programs.countByMusicFileId(file.getId()) == 0) {
+            musicFiles.delete(file);
         }
-        return toResponse(program);
     }
 
-    /** Removes the student's program. The next get gives the starting program again. */
-    @Transactional
-    public void delete(UUID studentId) {
-        findStudent(studentId);
-        programs.findByStudentId(studentId).ifPresent(programs::delete);
+    private static UUID idOf(MusicFile file) {
+        return file == null ? null : file.getId();
     }
 
-    /**
-     * The program a student starts with: the app's default program (Untitled, 2:10, four starter elements)
-     * on the student's own track. That's what the track on a student's discipline is for.
-     *  - Track: from their Standard Freeskate discipline, else Adult Freeskate, else any discipline, else Championship.
-     *  - Level: their level in that discipline if the track has it (e.g. "Preliminary"), else Preliminary
-     *    on the Championship track, else the track's first level.
-     */
-    static ProgramResponse startingProgram(Student student) {
-        Optional<StudentDiscipline> singles = student.getDisciplines().stream()
-                .min(Comparator.comparing((StudentDiscipline item) -> singlesRank(item.getDiscipline())));
-        Track track = singles.map(StudentDiscipline::getTrack).orElse(Track.CHAMPIONSHIP);
-        String level = singles.map(StudentDiscipline::getLevel).filter(track::hasLevel)
-                .orElse(track == Track.CHAMPIONSHIP ? "Preliminary" : track.getLevels().get(0));
-        List<ElementCatalog.Element> elements = ElementCatalog.STARTER_CODES.stream()
-                .map(code -> ElementCatalog.find(code).orElseThrow()).toList();
-        return new ProgramResponse(student.getId(), student.getName(), false, DEFAULT_TITLE, null, DEFAULT_DURATION,
-                track, track.getDisplayName(), level, elements, List.of(), List.of(), null);
-    }
-
-    /** Freeskate disciplines first, since programs are singles programs. */
-    private static int singlesRank(Discipline discipline) {
-        return switch (discipline) {
-            case STANDARD_FREESKATE -> 0;
-            case ADULT_FREESKATE -> 1;
-            default -> 2 + discipline.ordinal();
-        };
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static void checkCode(String code) {
@@ -133,6 +159,10 @@ public class ProgramService {
         }).toList();
     }
 
+    private Program findProgram(UUID id) {
+        return programs.findById(id).orElseThrow(() -> new NotFoundException("Program", id));
+    }
+
     private Student findStudent(UUID id) {
         return students.findById(id).orElseThrow(() -> new NotFoundException("Student", id));
     }
@@ -151,8 +181,10 @@ public class ProgramService {
         List<PlacementDto> placements = program.getPlacements().stream()
                 .map(item -> new PlacementDto(item.getKey(), item.getCode(), item.getX(), item.getY()))
                 .toList();
-        return new ProgramResponse(student.getId(), student.getName(), true, program.getMusicTitle(),
-                program.getArtist(), program.getDuration(), program.getTrack(), program.getTrack().getDisplayName(),
-                program.getLevel(), elements, new ArrayList<>(lines.values()), placements, program.getUpdatedAt());
+        MusicFileResponse musicFile = program.getMusicFile() == null ? null : MusicFileResponse.from(program.getMusicFile());
+        return new ProgramResponse(program.getId(), student.getId(), student.getName(), program.getName(),
+                program.getMusicTitle(), program.getArtist(), program.getDuration(), program.getTrack(),
+                program.getTrack().getDisplayName(), program.getLevel(), program.getMusicLink(), musicFile, elements,
+                new ArrayList<>(lines.values()), placements, program.getCreatedAt(), program.getUpdatedAt());
     }
 }

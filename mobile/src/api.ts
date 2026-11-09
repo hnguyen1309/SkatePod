@@ -20,10 +20,11 @@ import {
   type ApiLesson,
   type ApiNote,
   type ApiProgram,
+  type MusicFile,
   type ApiStudent,
   type Lesson,
   type Note,
-  type ProgramData,
+  type Program,
   type Student,
 } from "./data";
 
@@ -130,22 +131,61 @@ export async function deleteNote(id: string): Promise<void> {
   await request<void>("DELETE", `/notes/${id}`);
 }
 
+// Programs: a student can have several. One GET loads everyone's.
+export async function listPrograms(): Promise<Program[]> {
+  const programs = await request<ApiProgram[]>("GET", "/programs");
+  return programs.map(programFromApi);
+}
+
+export async function createProgram(program: Program): Promise<Program> {
+  return programFromApi(await request<ApiProgram>("POST", "/programs", programToApi(program)));
+}
+
+export async function updateProgram(program: Program): Promise<Program> {
+  return programFromApi(await request<ApiProgram>("PUT", `/programs/${program.id}`, programToApi(program)));
+}
+
+/** Also deletes the program's music file on the backend, unless another program uses it. */
+export async function deleteProgram(id: string): Promise<void> {
+  await request<void>("DELETE", `/programs/${id}`);
+}
+
+/** Where the backend serves an uploaded music file, to play it. */
+export function musicFileUrl(id: string) {
+  return `${API_URL}/music/${id}`;
+}
+
+// Uploading a music file can take a while on a phone connection, so it gets longer than other calls.
+const UPLOAD_TIMEOUT_MS = 120_000;
+
 /**
- * A student's program, or null if they don't have one yet. (For those the backend sends a starting
- * program it hasn't saved; the app shows its own starting program instead, like before.)
+ * Uploads a music file picked on the phone (`uri` is where the picker put it). Resolves once the
+ * backend has the whole file; the program then refers to it by id when it's saved.
  */
-export async function getProgram(studentId: string): Promise<ProgramData | null> {
-  const program = await request<ApiProgram>("GET", `/students/${studentId}/program`);
-  return program.saved ? programFromApi(program) : null;
-}
-
-export async function saveProgram(studentId: string, program: ProgramData): Promise<void> {
-  await request<ApiProgram>("PUT", `/students/${studentId}/program`, programToApi(program));
-}
-
-/** "Start a new program": the student goes back to the starting program. */
-export async function deleteProgram(studentId: string): Promise<void> {
-  await request<void>("DELETE", `/students/${studentId}/program`);
+export async function uploadMusic(file: { uri: string; name: string; mimeType?: string }): Promise<MusicFile> {
+  if (!API_URL) throw new ApiError(0, "Uploading music needs the backend. Add EXPO_PUBLIC_API_URL to mobile/.env.");
+  const form = new FormData();
+  // React Native sends a { uri, name, type } object as the file's contents.
+  form.append("file", { uri: file.uri, name: file.name, type: file.mimeType ?? "audio/mpeg" } as unknown as Blob);
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/music`, { method: "POST", body: form, signal: controller.signal });
+  } catch {
+    log(`→ POST /music failed: no answer from ${API_URL} (${Date.now() - started} ms)`);
+    throw new ApiError(0, `Couldn't upload the file to ${API_URL}. Is the backend running, and is this phone on the same Wi-Fi as your Mac?`);
+  } finally {
+    clearTimeout(timer);
+  }
+  log(`→ POST /music ${response.status} (${Date.now() - started} ms)`);
+  if (!response.ok) {
+    const problem = (await response.json().catch(() => null)) as { detail?: string } | null;
+    const detail = response.status === 413 ? "Music files can be up to 20 MB." : problem?.detail;
+    throw new ApiError(response.status, detail ?? `The backend answered ${response.status}.`);
+  }
+  return (await response.json()) as MusicFile;
 }
 
 /** For the Test connection button: how many students the backend has, and how long it took. */

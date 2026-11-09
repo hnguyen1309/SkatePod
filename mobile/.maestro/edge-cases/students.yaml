@@ -1,0 +1,53 @@
+# Students edge cases: saving without a name, the same discipline twice, a search with no results, and a
+# student added then cancelled. Runs without the backend, from the sample data.
+appId: host.exp.Exponent
+name: Students edge cases
+tags: [edge-case]
+---
+- runFlow: ../subflows/start.yaml
+- tapOn: "Students"
+
+# 1. No name: Save student is refused with "Add a name", and the form stays open.
+- tapOn: "Add student"
+- assertVisible: "Student name"
+- tapOn: "Save student"
+- assertVisible: "Add a name"
+- tapOn: "OK"
+- assertVisible: "Save student"
+
+# 2. The same discipline can't be added twice: once Freeskate is in, it's gone from the picker.
+- tapOn:
+    text: "Student name"
+    index: 1
+- inputText: "Edge Skater"
+- pressKey: Enter
+- tapOn:
+    text: "Add a discipline"
+    index: 1
+- scrollUntilVisible:
+    element: "Singles · Standard Track \\(Freeskate\\)"
+- tapOn: "Singles · Standard Track \\(Freeskate\\)"
+- assertVisible: "Level"
+- tapOn:
+    text: "Add another discipline"
+    index: 1
+- assertNotVisible: "Singles · Standard Track \\(Freeskate\\)"
+- tapOn:
+    text: "Add another discipline"   # close the list again
+    index: 1
+
+# 3. Cancel: nothing is saved, so the student isn't in the list.
+- tapOn: "Cancel"
+- runFlow:
+    when:
+      visible: "Discard changes\\?"   # in case the form asks before dropping what was typed
+    commands:
+      - tapOn: "Discard"
+- assertNotVisible: ".*Edge Skater.*"
+
+# 4. A search that matches nobody shows the empty message, and clearing it brings everyone back.
+- tapOn: "Search by student, discipline or level..."
+- inputText: "Zzzz"
+- assertVisible: "No students match those filters."
+- eraseText: 10
+- assertVisible: ".*Emma Miller.*"

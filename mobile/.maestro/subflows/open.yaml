@@ -1,0 +1,24 @@
+# Opens SkatePod in Expo Go WITHOUT resetting the data (start.yaml also resets to sample data).
+# Used by the backend flow, which makes and deletes its own data on the backend instead.
+# Same steps as the start of start.yaml. EXPO_URL comes from run-ui-tests.sh (default exp://127.0.0.1:8081).
+appId: host.exp.Exponent
+---
+- stopApp: host.exp.Exponent
+# Opening the link right after Expo Go relaunches sometimes times out on the Simulator, so wait a moment and retry.
+- waitForAnimationToEnd:
+    timeout: 3000
+- retry:
+    maxRetries: 2
+    commands:
+      - openLink: ${EXPO_URL || "exp://127.0.0.1:8081"}
+# Expo Go sometimes shows its developer-menu tip on first open; dismiss it if it's there.
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+# Wait for the app itself: the "Settings" tab only shows once SkatePod has loaded (and, on the backend,
+# once students, lessons, notes and programs have loaded).
+- extendedWaitUntil:
+    visible: "Settings"
+    timeout: 90000

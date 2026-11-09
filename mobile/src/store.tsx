@@ -2,19 +2,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ActivityIndicator, Alert, View } from "react-native";
 import * as api from "./api";
 import {
-  DEFAULT_PROGRAM,
   SAMPLE_LESSONS,
   SAMPLE_NOTES,
   SAMPLE_SETTINGS,
   SAMPLE_STUDENTS,
   lessonHistoryToAdd,
   newId,
-  programNotReady,
+  sortStudentsByName,
+  upgradeOldPrograms,
   startOfWeek,
   upgradeLesson,
   type AvailabilityBlock,
   type Lesson,
   type Note,
+  type MusicFile,
+  type Program,
   type ProgramData,
   type Settings,
   type Student,
@@ -49,15 +51,13 @@ type Store = {
   saveNote: (note: Note) => Promise<Note | null>;
   /** Deletes one or more notes (Select mode deletes several). Resolves to false if any couldn't be deleted. */
   deleteNotes: (ids: string[]) => Promise<boolean>;
-  /** Saved programs by student id. A student without one sees DEFAULT_PROGRAM. */
-  programs: Record<string, ProgramData>;
-  /**
-   * Changes a student's program. It shows straight away; on the backend it's sent a moment after the
-   * last change (so typing doesn't send a request per letter), once programNotReady says it's complete.
-   */
-  updateProgram: (studentId: string, changes: Partial<ProgramData>) => void;
-  /** "Start a new program": removes the student's saved program. Resolves to false if the backend refused. */
-  clearProgram: (studentId: string) => Promise<boolean>;
+  /** Every student's saved programs, oldest first. A student can have several, or none. */
+  programs: Program[];
+  /** Adds or updates a program (the Save button). Resolves to the saved program, or null after telling the coach why not. */
+  saveProgram: (program: Program) => Promise<Program | null>;
+  deleteProgram: (id: string) => Promise<boolean>;
+  /** Uploads a music file to the backend. Resolves once it's all there, or to null after telling the coach why not. */
+  uploadMusic: (file: { uri: string; name: string; mimeType?: string }) => Promise<MusicFile | null>;
   settings: Settings;
   setSettings: Setter<Settings>;
   studentById: (id: string) => Student | undefined;
@@ -74,13 +74,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [backendStudents, setBackendStudents] = useState<Student[]>([]);
   const [backendLessons, setBackendLessons] = useState<Lesson[]>([]);
   const [backendNotes, setBackendNotes] = useState<Note[]>([]);
-  const [backendPrograms, setBackendPrograms] = useState<Record<string, ProgramData>>({});
-  // The same programs, readable straight away by the delayed save (state only updates on the next render).
-  const backendProgramsRef = useRef<Record<string, ProgramData>>({});
-  const showBackendPrograms = (next: Record<string, ProgramData>) => {
-    backendProgramsRef.current = next;
-    setBackendPrograms(next);
-  };
+  const [backendPrograms, setBackendPrograms] = useState<Program[]>([]);
   const [backendLoaded, setBackendLoaded] = useState(!onBackend);
   const [backendError, setBackendError] = useState<string | null>(null);
   const students = onBackend ? backendStudents : phoneStudents;
@@ -89,18 +83,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (!onBackend) return;
     try {
       // All at once, so the app opens as fast as the slowest of them.
-      const [loadedStudents, loadedLessons, loadedNotes] = await Promise.all([api.listStudents(), api.listLessons(), api.listNotes()]);
+      const [loadedStudents, loadedLessons, loadedNotes, loadedPrograms] = await Promise.all([
+        api.listStudents(),
+        api.listLessons(),
+        api.listNotes(),
+        api.listPrograms(),
+      ]);
       setBackendStudents(loadedStudents);
       setBackendLessons(loadedLessons);
       setBackendNotes(loadedNotes);
-      // There's one program per student, so ask for each student's (all at once). Only saved ones are kept.
-      const loadedPrograms = await Promise.all(loadedStudents.map((student) => api.getProgram(student.id)));
-      const byStudent: Record<string, ProgramData> = {};
-      loadedStudents.forEach((student, index) => {
-        const program = loadedPrograms[index];
-        if (program) byStudent[student.id] = program;
-      });
-      showBackendPrograms(byStudent);
+      setBackendPrograms(loadedPrograms);
       setBackendError(null);
     } catch (error) {
       setBackendError(error instanceof Error ? error.message : String(error));
@@ -126,7 +118,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // A new student gets its id from the backend, so the one the editor made up is dropped.
         const saved = isNew ? await api.createStudent(student) : await api.updateStudent(student);
         setBackendStudents((current) =>
-          isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item)),
+          // A to Z, like the backend's list, so nothing jumps around when the app reloads it.
+          sortStudentsByName(isNew ? [...current, saved] : current.map((item) => (item.id === saved.id ? saved : item))),
         );
         return true;
       } catch (error) {
@@ -137,10 +130,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [onBackend, backendStudents, setPhoneStudents],
   );
 
+  // On the phone, deleting a student also deletes their lessons, notes and programs, like the backend does
+  // (StudentService.delete). Those lists are set up further down, so this is filled in once they exist.
+  const deletePhoneStudentData = useRef<(studentId: string) => void>(() => {});
+
   const deleteStudent = useCallback(
     async (id: string) => {
       if (!onBackend) {
         setPhoneStudents((current) => current.filter((item) => item.id !== id));
+        deletePhoneStudentData.current(id);
         return true;
       }
       try {
@@ -149,8 +147,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         // The backend deletes the student's lessons and notes with them, so drop them here too.
         setBackendLessons((current) => current.filter((item) => item.studentId !== id));
         setBackendNotes((current) => current.filter((item) => item.studentId !== id));
-        const { [id]: _deleted, ...otherPrograms } = backendProgramsRef.current; // and their program
-        showBackendPrograms(otherPrograms);
+        setBackendPrograms((current) => current.filter((item) => item.studentId !== id)); // and their programs
         return true;
       } catch (error) {
         Alert.alert("Couldn't delete the student", error instanceof Error ? error.message : String(error));
@@ -253,57 +250,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     [onBackend, setPhoneNotes],
   );
-  const [phonePrograms, setPhonePrograms, l4] = usePersistentState<Record<string, ProgramData>>("skatepod.programs.v1", {});
+  // Programs on the phone. Before Nov 2026 there was one per student, saved under programs.v1 as
+  // { studentId: program }; the new list (programs.v2) starts from those until it's first saved.
+  const [oldPhonePrograms, , l4] = usePersistentState<Record<string, ProgramData>>("skatepod.programs.v1", {});
+  const [savedPhonePrograms, setPhonePrograms, l8] = usePersistentState<Program[] | null>("skatepod.programs.v2", null);
+  const phonePrograms = useMemo(() => savedPhonePrograms ?? upgradeOldPrograms(oldPhonePrograms), [savedPhonePrograms, oldPhonePrograms]);
   const programs = onBackend ? backendPrograms : phonePrograms;
 
-  // One waiting save per student. Each change restarts the wait, so only the last version is sent.
-  const programSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const PROGRAM_SAVE_DELAY_MS = 800;
-
-  const updateProgram = useCallback(
-    (studentId: string, changes: Partial<ProgramData>) => {
+  const saveProgram = useCallback(
+    async (program: Program) => {
+      const isNew = !programs.some((item) => item.id === program.id);
+      const add = (list: Program[], saved: Program) => (isNew ? [...list, saved] : list.map((item) => (item.id === saved.id ? saved : item)));
       if (!onBackend) {
-        setPhonePrograms((all) => ({ ...all, [studentId]: { ...DEFAULT_PROGRAM, ...all[studentId], ...changes } }));
-        return;
+        setPhonePrograms((current) => add(current ?? phonePrograms, program));
+        return program;
       }
-      const all = backendProgramsRef.current;
-      showBackendPrograms({ ...all, [studentId]: { ...DEFAULT_PROGRAM, ...all[studentId], ...changes } });
-      clearTimeout(programSaveTimers.current[studentId]);
-      programSaveTimers.current[studentId] = setTimeout(async () => {
-        delete programSaveTimers.current[studentId];
-        const program = backendProgramsRef.current[studentId];
-        if (!program || programNotReady(program)) return; // the Programs screen says what's missing
-        try {
-          await api.saveProgram(studentId, program);
-        } catch (error) {
-          Alert.alert("Couldn't save the program", error instanceof Error ? error.message : String(error));
-        }
-      }, PROGRAM_SAVE_DELAY_MS);
+      try {
+        // A new program gets its id from the backend, so the one the screen made up is dropped.
+        const saved = isNew ? await api.createProgram(program) : await api.updateProgram(program);
+        setBackendPrograms((current) => add(current, saved));
+        return saved;
+      } catch (error) {
+        Alert.alert("Couldn't save the program", error instanceof Error ? error.message : String(error));
+        return null;
+      }
     },
-    [onBackend, setPhonePrograms],
+    [onBackend, programs, phonePrograms, setPhonePrograms],
   );
 
-  const clearProgram = useCallback(
-    async (studentId: string) => {
+  const deleteProgram = useCallback(
+    async (id: string) => {
       if (!onBackend) {
-        setPhonePrograms(({ [studentId]: _cleared, ...others }) => others);
+        setPhonePrograms((current) => (current ?? phonePrograms).filter((item) => item.id !== id));
         return true;
       }
-      // A change still waiting to be sent would save the old program again, so drop it.
-      clearTimeout(programSaveTimers.current[studentId]);
-      delete programSaveTimers.current[studentId];
       try {
-        await api.deleteProgram(studentId);
-        const { [studentId]: _cleared, ...others } = backendProgramsRef.current;
-        showBackendPrograms(others);
+        await api.deleteProgram(id);
+        setBackendPrograms((current) => current.filter((item) => item.id !== id));
         return true;
       } catch (error) {
-        Alert.alert("Couldn't start a new program", error instanceof Error ? error.message : String(error));
+        Alert.alert("Couldn't delete the program", error instanceof Error ? error.message : String(error));
         return false;
       }
     },
-    [onBackend, setPhonePrograms],
+    [onBackend, phonePrograms, setPhonePrograms],
   );
+
+  const uploadMusic = useCallback(async (file: { uri: string; name: string; mimeType?: string }) => {
+    try {
+      return await api.uploadMusic(file);
+    } catch (error) {
+      Alert.alert("Couldn't upload the music", error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  }, []);
+
+  deletePhoneStudentData.current = (studentId: string) => {
+    setPhoneLessons((current) => current.filter((item) => item.studentId !== studentId));
+    setPhoneNotes((current) => current.filter((item) => item.studentId !== studentId));
+    setPhonePrograms((current) => (current ?? phonePrograms).filter((item) => item.studentId !== studentId));
+  };
+
   const [settings, setSettings, l5] = usePersistentState<Settings>("skatepod.settings.v1", SAMPLE_SETTINGS);
   const [availability, setAvailability, l6] = usePersistentState<AvailabilityBlock[]>("skatepod.availability.v1", []);
   // The last time the training history was brought up to date (see lessonHistoryToAdd).
@@ -360,8 +367,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       saveNote,
       deleteNotes,
       programs,
-      updateProgram,
-      clearProgram,
+      saveProgram,
+      deleteProgram,
+      uploadMusic,
       settings,
       setSettings,
       studentById: (id: string) => students.find((student) => student.id === id),
@@ -372,7 +380,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           setPhoneStudents(SAMPLE_STUDENTS);
           setPhoneLessons(SAMPLE_LESSONS);
           setPhoneNotes(SAMPLE_NOTES);
-          setPhonePrograms({});
+          setPhonePrograms([]);
         }
         setSettings(SAMPLE_SETTINGS);
         setAvailability([]);
@@ -382,12 +390,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }),
     [
       students, onBackend, backendError, reloadFromBackend, saveStudent, deleteStudent, lessons, saveLesson, deleteLesson, availability,
-      notes, saveNote, deleteNotes, programs, updateProgram, clearProgram, settings, setPhoneStudents, setPhoneLessons, setPhoneNotes,
+      notes, saveNote, deleteNotes, programs, saveProgram, deleteProgram, uploadMusic, settings, setPhoneStudents, setPhoneLessons, setPhoneNotes,
       setPhonePrograms, setAvailability, setSettings,
     ],
   );
 
-  if (!(l1 && l2 && l3 && l4 && l5 && l6 && l7 && backendLoaded)) {
+  if (!(l1 && l2 && l3 && l4 && l5 && l6 && l7 && l8 && backendLoaded)) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
         <ActivityIndicator color={colors.navy} />

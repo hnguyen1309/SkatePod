@@ -3,7 +3,7 @@ appId: host.exp.Exponent
 name: Calendar availability blocks
 tags: [regression]
 ---
-- runFlow: subflows/start.yaml
+- runFlow: ../subflows/start.yaml
 - tapOn: "Calendar"
 
 - tapOn: "Availability"

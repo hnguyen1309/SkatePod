@@ -25,6 +25,8 @@ import {
   formatTime,
   newId,
   placeFor,
+  startsLaterNote,
+  weekOffsetOf,
   todayIndex,
   unavailableStretches,
   weekDates,
@@ -100,6 +102,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   async function saveLesson(before: Lesson, after: Lesson) {
     const saved = await storeLesson(after);
     if (!saved) return false;
+    showWeekOf(saved);
     const note = findLessonNote(notes, before, dateOf(before));
     const followed = note && syncLessonNote(notes, before, saved, dateOf(before), dateOf(saved)).find((item) => item.id === note.id);
     if (followed) await saveNote(followed);
@@ -107,13 +110,24 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   }
 
 
+  // A lesson booked today for a day that has already passed this week (say Saturday, booked on Sunday)
+  // only starts next week, so it wouldn't be on the week on screen and would seem to vanish. Go to the
+  // week (and, in Day view, the day) of its next lesson instead, so the coach sees where it went.
+  function showWeekOf(lesson: Lesson) {
+    if (isLessonActiveOn(lesson, dates[lesson.day].date)) return;
+    const next = nextLessonTime(lesson, new Date());
+    if (!next) return; // it has ended: nothing to show
+    setWeekOffset(weekOffsetOf(next));
+    setSelectedDay(lesson.day);
+  }
+
   function moveLesson(lesson: Lesson, changes: Partial<Pick<Lesson, "day" | "start" | "duration">>) {
     const moved = { ...lesson, ...changes };
     if (moved.day === lesson.day && moved.start === lesson.start && moved.duration === lesson.duration) return;
     const clash = findClash(moved, lessons);
     if (clash) {
       const name = studentById(clash.studentId)?.name ?? "Another student";
-      Alert.alert("That time is taken", `${name} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)}. The lesson stayed where it was.`);
+      Alert.alert("That time is taken", `${name} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)}${startsLaterNote(clash)}. The lesson stayed where it was.`);
       return;
     }
     saveLesson(lesson, moved);
@@ -618,6 +632,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           onSave={async (lesson) => {
             const saved = await storeLesson(lesson);
             if (!saved) return;
+            showWeekOf(saved);
             setSelectedId(saved.id); // the backend gives a new lesson its own id
             setEditorOpen(false);
             setTapped(null);
@@ -737,7 +752,7 @@ function LessonEditor({
     if (clash) {
       Alert.alert(
         "That time is taken",
-        `${nameOf(clash.studentId)} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)} (${clash.duration} minutes). Pick another time or day.`,
+        `${nameOf(clash.studentId)} already has a lesson on ${FULL_WEEKDAYS[clash.day]} at ${formatTime(clash.start)} (${clash.duration} minutes)${startsLaterNote(clash)}. Pick another time or day.`,
       );
       return;
     }

@@ -8,13 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.skatepod.api.common.BadRequestException;
+import com.skatepod.api.music.MusicFile;
+import com.skatepod.api.music.MusicFileService;
 import com.skatepod.api.program.dto.PlacementDto;
 import com.skatepod.api.program.dto.ProgramRequest;
 import com.skatepod.api.program.dto.ProgramResponse;
 import com.skatepod.api.program.dto.RinkPointDto;
-import com.skatepod.api.student.Discipline;
 import com.skatepod.api.student.Student;
-import com.skatepod.api.student.StudentDiscipline;
 import com.skatepod.api.student.StudentRepository;
 import com.skatepod.api.student.Track;
 import java.util.List;
@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ProgramServiceTest {
@@ -36,63 +37,44 @@ class ProgramServiceTest {
     @Mock
     private StudentRepository students;
 
+    @Mock
+    private MusicFileService musicFiles;
+
     private ProgramService service;
     private final UUID studentId = UUID.randomUUID();
+    private Student student;
 
     @BeforeEach
     void setUp() {
-        service = new ProgramService(programs, students);
+        service = new ProgramService(programs, students, musicFiles);
+        student = new Student("Skater", List.of());
+        ReflectionTestUtils.setField(student, "id", studentId);
     }
 
-    private static Student student(StudentDiscipline... disciplines) {
-        return new Student("Skater", List.of(disciplines));
+    private ProgramRequest request(Track track, String level, List<String> elements, UUID musicFileId) {
+        return new ProgramRequest(studentId, "Free skate", "Clair de Lune", "Debussy", "2:30", track, level,
+                "https://www.youtube.com/watch?v=abc", musicFileId, elements, null, null);
     }
 
-    private static ProgramRequest request(Track track, String level, List<String> elements) {
-        return new ProgramRequest("Clair de Lune", "Debussy", "2:30", track, level, elements, null, null);
+    private static MusicFile musicFile() {
+        MusicFile file = new MusicFile("Clair de Lune.mp3", "audio/mpeg", 1234);
+        ReflectionTestUtils.setField(file, "id", UUID.randomUUID());
+        return file;
     }
 
-    @Test
-    @DisplayName("The starting program is on the student's freeskate track")
-    void startingProgramUsesTheStudentsTrack() {
-        Student lily = student(
-                new StudentDiscipline(Discipline.PATTERN_DANCE, Track.CHAMPIONSHIP, "Bronze"),
-                new StudentDiscipline(Discipline.STANDARD_FREESKATE, Track.EXCEL, "Silver"));
-
-        ProgramResponse program = ProgramService.startingProgram(lily);
-
-        assertThat(program.saved()).isFalse();
-        assertThat(program.track()).isEqualTo(Track.EXCEL);
-        // Silver isn't an Excel level, so it starts at the track's first level.
-        assertThat(program.level()).isEqualTo("Excel Pre-Preliminary");
-        assertThat(program.musicTitle()).isEqualTo("Untitled program");
-        assertThat(program.elements()).extracting(ElementCatalog.Element::code).containsExactly("1A", "2S", "CCoSp", "StSq");
-    }
-
-    @Test
-    @DisplayName("The starting level is the student's own when the track has it")
-    void startingLevelFromTheStudent() {
-        Student noah = student(new StudentDiscipline(Discipline.ADULT_FREESKATE, Track.ADULT, "Adult Gold"));
-        Student jonah = student(new StudentDiscipline(Discipline.STANDARD_FREESKATE, Track.CHAMPIONSHIP, "Preliminary"));
-
-        assertThat(ProgramService.startingProgram(noah).level()).isEqualTo("Adult Gold");
-        assertThat(ProgramService.startingProgram(jonah).level()).isEqualTo("Preliminary");
-    }
-
-    @Test
-    @DisplayName("No disciplines: Championship track, Preliminary (the app's default)")
-    void startingProgramWithoutDisciplines() {
-        ProgramResponse program = ProgramService.startingProgram(student());
-
-        assertThat(program.track()).isEqualTo(Track.CHAMPIONSHIP);
-        assertThat(program.level()).isEqualTo("Preliminary");
+    /** A saved program of `student`, with a music file. */
+    private Program savedProgram(MusicFile file) {
+        Program program = new Program(student, "Free skate", "Clair de Lune", null, "2:30", Track.CHAMPIONSHIP,
+                "Juvenile", null, file, List.of("2S"), List.of(), List.of());
+        ReflectionTestUtils.setField(program, "id", UUID.randomUUID());
+        return program;
     }
 
     @Test
     void levelMustBelongToTheTrack() {
-        when(students.findById(studentId)).thenReturn(Optional.of(student()));
+        when(students.findById(studentId)).thenReturn(Optional.of(student));
 
-        assertThatThrownBy(() -> service.save(studentId, request(Track.EXCEL, "Juvenile", List.of("2S"))))
+        assertThatThrownBy(() -> service.create(request(Track.EXCEL, "Juvenile", List.of("2S"), null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Juvenile is not a level in the Excel track");
         verify(programs, never()).save(any());
@@ -100,31 +82,108 @@ class ProgramServiceTest {
 
     @Test
     void elementsMustBeInTheCatalog() {
-        when(students.findById(studentId)).thenReturn(Optional.of(student()));
+        when(students.findById(studentId)).thenReturn(Optional.of(student));
 
-        assertThatThrownBy(() -> service.save(studentId, request(Track.CHAMPIONSHIP, "Juvenile", List.of("2S", "5A"))))
+        assertThatThrownBy(() -> service.create(request(Track.CHAMPIONSHIP, "Juvenile", List.of("2S", "5A"), null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("5A is not an element in the catalog");
     }
 
     @Test
-    @DisplayName("Saving keeps the element order and the lines drawn on the rink")
-    void saveKeepsOrderAndPaths() {
-        when(students.findById(studentId)).thenReturn(Optional.of(student()));
-        when(programs.findByStudentId(studentId)).thenReturn(Optional.empty());
+    @DisplayName("A new program keeps its name, music link and file, element order and rink map")
+    void createKeepsEverything() {
+        MusicFile file = musicFile();
+        when(students.findById(studentId)).thenReturn(Optional.of(student));
+        when(musicFiles.find(file.getId())).thenReturn(file);
         when(programs.save(any(Program.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        ProgramRequest request = new ProgramRequest("Clair de Lune", " ", "2:30", Track.CHAMPIONSHIP, "Juvenile",
-                List.of("StSq", "2S", "1A"),
+        ProgramRequest request = new ProgramRequest(studentId, " Free skate ", "Clair de Lune", " ", "2:30",
+                Track.CHAMPIONSHIP, "Juvenile", "https://open.spotify.com/track/1", file.getId(),
+                List.of("StSq", "2S+1Eu+3S", "1A"),
                 List.of(List.of(new RinkPointDto(1.0, 2.0), new RinkPointDto(3.0, 4.0)), List.of(new RinkPointDto(5.0, 6.0))),
                 List.of(new PlacementDto("p1", "2S", 10.0, 20.0)));
 
-        ProgramResponse saved = service.save(studentId, request);
+        ProgramResponse saved = service.create(request);
 
-        assertThat(saved.saved()).isTrue();
+        assertThat(saved.name()).isEqualTo("Free skate");
         assertThat(saved.artist()).isNull();
-        assertThat(saved.elements()).extracting(ElementCatalog.Element::code).containsExactly("StSq", "2S", "1A");
+        assertThat(saved.musicLink()).isEqualTo("https://open.spotify.com/track/1");
+        assertThat(saved.musicFile().fileName()).isEqualTo("Clair de Lune.mp3");
+        assertThat(saved.elements()).extracting(ElementCatalog.Element::code).containsExactly("StSq", "2S+1Eu+3S", "1A");
         assertThat(saved.paths()).hasSize(2);
         assertThat(saved.paths().get(0)).containsExactly(new RinkPointDto(1.0, 2.0), new RinkPointDto(3.0, 4.0));
         assertThat(saved.placements()).containsExactly(new PlacementDto("p1", "2S", 10.0, 20.0));
+    }
+
+    @Test
+    @DisplayName("A program can't be moved to another student")
+    void programStaysWithItsStudent() {
+        Program program = savedProgram(null);
+        when(programs.findById(program.getId())).thenReturn(Optional.of(program));
+        ProgramRequest other = new ProgramRequest(UUID.randomUUID(), "Free skate", "Clair de Lune", null, "2:30",
+                Track.CHAMPIONSHIP, "Juvenile", null, null, List.of("2S"), null, null);
+
+        assertThatThrownBy(() -> service.update(program.getId(), other))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageStartingWith("A program stays with its student");
+    }
+
+    @Test
+    @DisplayName("Removing the music file from a program deletes the file when nothing else uses it")
+    void removedFileIsDeleted() {
+        MusicFile file = musicFile();
+        Program program = savedProgram(file);
+        when(programs.findById(program.getId())).thenReturn(Optional.of(program));
+        when(programs.countByMusicFileId(file.getId())).thenReturn(0L);
+
+        ProgramResponse saved = service.update(program.getId(), request(Track.CHAMPIONSHIP, "Juvenile", List.of("2S"), null));
+
+        assertThat(saved.musicFile()).isNull();
+        verify(musicFiles).delete(file);
+    }
+
+    @Test
+    @DisplayName("Keeping the same music file doesn't delete it")
+    void sameFileIsKept() {
+        MusicFile file = musicFile();
+        Program program = savedProgram(file);
+        when(programs.findById(program.getId())).thenReturn(Optional.of(program));
+        when(musicFiles.find(file.getId())).thenReturn(file);
+
+        service.update(program.getId(), request(Track.CHAMPIONSHIP, "Juvenile", List.of("2S"), file.getId()));
+
+        verify(musicFiles, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("Deleting a program keeps a music file another program still uses")
+    void sharedFileIsKept() {
+        MusicFile file = musicFile();
+        Program program = savedProgram(file);
+        when(programs.findById(program.getId())).thenReturn(Optional.of(program));
+        when(programs.countByMusicFileId(file.getId())).thenReturn(1L);
+
+        service.delete(program.getId());
+
+        verify(programs).delete(program);
+        verify(musicFiles, never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("Deleting a student's programs deletes their music files, but keeps one another program still uses")
+    void deleteAllForAStudent() {
+        MusicFile own = musicFile();
+        MusicFile shared = musicFile();
+        Program withOwnFile = savedProgram(own);
+        Program withSharedFile = savedProgram(shared);
+        Program withoutFile = savedProgram(null);
+        when(programs.findByStudentIdOrderByCreatedAtAsc(studentId)).thenReturn(List.of(withOwnFile, withSharedFile, withoutFile));
+        when(programs.countByMusicFileId(own.getId())).thenReturn(0L);
+        when(programs.countByMusicFileId(shared.getId())).thenReturn(1L);
+
+        service.deleteAllFor(studentId);
+
+        verify(programs).deleteAll(List.of(withOwnFile, withSharedFile, withoutFile));
+        verify(musicFiles).delete(own);
+        verify(musicFiles, never()).delete(shared);
     }
 }
