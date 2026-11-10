@@ -79,7 +79,7 @@ tags: [regression]
 - assertNotVisible: ".*Test Edited.*"
 
 # A student with notes shows them as cards. A card slides the note in over the profile (same sheet),
-# Back slides it away again, and the link opens the Lessons tab filtered to that student.
+# Back slides it away again, Select ticks cards to share, and the link opens the Lessons tab filtered to that student.
 - scrollUntilVisible:
     element: ".*Lily Kim.*"
 - tapOn: ".*Lily Kim.*"
@@ -88,6 +88,14 @@ tags: [regression]
 - tapOn: ".*Public · 45 minutes.*"
 - assertVisible: "Save note"
 - tapOn: "Back"
+- assertVisible: "Go to notes center"
+# Select mode: tick a card to share it (Share opens the iOS share sheet, so the flow stops before it;
+# the Text button never shows on the Simulator, which can't send texts).
+- tapOn: "Select"
+- assertVisible: "0 selected"
+- tapOn: ".*Public · 45 minutes.*"
+- assertVisible: "1 selected"
+- tapOn: "Cancel"
 - assertVisible: "Go to notes center"
 - tapOn: "Go to notes center"
 - assertVisible: "Filter by student name..."

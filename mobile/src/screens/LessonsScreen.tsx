@@ -8,11 +8,13 @@ import {
   formatTime,
   isEmptyNote,
   matchesHistoryFilter,
+  shareNotesMessage,
   type HistoryRange,
   type Note,
 } from "../data";
 import type { ScreenProps, Tab } from "../navigation";
 import { useStore } from "../store";
+import { openTextMessage, useCanText } from "../texting";
 import { colors } from "../theme";
 
 export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
@@ -80,8 +82,21 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
     setSelected([]);
   }
 
-  function shareSelected() {
+  const canText = useCanText();
+
+  // The ticked notes, plus their student when they all belong to one (then the message greets them
+  // and Text is addressed to their phone number, if they have one).
+  function pickedNotes() {
     const picked = visible.filter((note) => selected.includes(note.id));
+    const studentIds = new Set(picked.map((note) => note.studentId));
+    const student = studentIds.size === 1 ? studentById(picked[0].studentId) : undefined;
+    return { picked, student };
+  }
+
+  // One student: the same greeting message as on their profile (shareNotesMessage). Several students:
+  // each note says whose it is, and there's no greeting.
+  function messageFor(picked: Note[], student: ReturnType<typeof studentById>) {
+    if (student) return shareNotesMessage(picked, student.name, settings.coachName);
     const message = picked
       .map((note) =>
         [
@@ -91,7 +106,18 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
         ].join("\n"),
       )
       .join("\n\n");
-    Share.share({ message: `${message}\n\n— ${settings.coachName}, via SkatePod` }).catch(() => {});
+    return `${message}\n\n— ${settings.coachName}, via SkatePod`;
+  }
+
+  function shareSelected() {
+    const { picked, student } = pickedNotes();
+    Share.share({ message: messageFor(picked, student) }).catch(() => {});
+  }
+
+  async function textSelected() {
+    const { picked, student } = pickedNotes();
+    if (!picked.length) return;
+    if (await openTextMessage(student?.phone, messageFor(picked, student))) stopSelecting();
   }
 
   function deleteSelected() {
@@ -180,8 +206,14 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
             style={{ flex: 1 }}
             variant="secondary"
           />
-          <Button disabled={!selected.length} icon="share" label="Share" onPress={shareSelected} style={{ flex: 1 }} variant="secondary" />
           <Button disabled={!selected.length} label="Delete" onPress={deleteSelected} style={{ flex: 1 }} variant="danger" />
+        </View>
+      ) : null}
+      {selecting ? (
+        // Text is addressed to the student's number when every ticked note is theirs and they have one.
+        <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
+          <Button disabled={!selected.length} icon="share" label="Share" onPress={shareSelected} style={{ flex: 1 }} variant="secondary" />
+          {canText ? <Button disabled={!selected.length} icon="phone" label="Text" onPress={textSelected} style={{ flex: 1 }} /> : null}
         </View>
       ) : null}
 

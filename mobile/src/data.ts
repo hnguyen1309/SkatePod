@@ -178,6 +178,7 @@ export type AvailabilityBlock = {
 export type Settings = {
   coachName: string;
   email: string;
+  phone?: string; // the coach's own number, optional (Nov 2026); settings saved before it have none
   lessonLength: number;
   reminders: boolean;
   sharedNotes: boolean;
@@ -422,9 +423,51 @@ export function phoneProblem(phone: string): string | null {
   return null;
 }
 
+/** The coach profile fields in Settings that the "Save coach info" button saves together. */
+export type CoachProfile = Pick<Settings, "coachName" | "email" | "phone" | "lessonLength">;
+
+export function coachProfileOf(settings: Settings): CoachProfile {
+  return { coachName: settings.coachName, email: settings.email, phone: settings.phone ?? "", lessonLength: settings.lessonLength };
+}
+
+/**
+ * True when the coach changed something in the profile card since the last save, so the Save button
+ * only lights up when there's something to save. Spaces at the ends don't count as a change.
+ */
+export function coachProfileHasChanges(saved: CoachProfile, draft: CoachProfile): boolean {
+  return (
+    saved.coachName.trim() !== draft.coachName.trim() ||
+    saved.email.trim() !== draft.email.trim() ||
+    (saved.phone ?? "").trim() !== (draft.phone ?? "").trim() ||
+    saved.lessonLength !== draft.lessonLength
+  );
+}
+
+/**
+ * Why the coach profile can't be saved yet, or null if it can. Every field is optional, but the
+ * phone number follows the same rule as a student's (phoneProblem) and an email needs an "@".
+ */
+export function coachProfileProblem(profile: CoachProfile): string | null {
+  const email = profile.email.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "That email doesn't look right (like name@example.com).";
+  const phone = phoneProblem(profile.phone ?? "");
+  if (phone) return `Phone number: ${phone}`;
+  return null;
+}
+
 /** The link that starts a call on the phone ("tel:+15550102030"). */
 export function phoneLink(phone: string) {
   return `tel:${phone.replace(/[^0-9+]/g, "")}`;
+}
+
+/**
+ * The link that opens the Messages app with a text ready to send, addressed to `phone` when there is one
+ * (otherwise the coach picks a contact). iPhone wants "sms:5550102030&body=..." and Android
+ * "sms:5550102030?body=...", so the platform decides which.
+ */
+export function smsLink(phone: string | undefined, message: string, platform: "ios" | "android"): string {
+  const to = phone ? phone.replace(/[^0-9+]/g, "") : "";
+  return `sms:${to}${platform === "ios" ? "&" : "?"}body=${encodeURIComponent(message)}`;
 }
 
 /** The track a new discipline gets: Adult for the adult disciplines, Championship for the rest. */
@@ -846,6 +889,7 @@ export const SAMPLE_NOTES: Note[] = [
 export const SAMPLE_SETTINGS: Settings = {
   coachName: "Mia Carter",
   email: "mia@example.com",
+  phone: "+1 (555) 010-9000",
   lessonLength: 45,
   reminders: true,
   sharedNotes: true,
@@ -1053,6 +1097,31 @@ export function matchesHistoryFilter(
 /** A student's lesson notes, newest first (for the note cards on the student's profile). */
 export function notesForStudent(notes: Note[], studentId: string): Note[] {
   return notes.filter((note) => note.studentId === studentId).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * The text a coach shares with a student from their profile: a greeting with the student's first name
+ * (the app only keeps first names or initials anyway), each picked note oldest first, and the coach's
+ * sign-off "via SkatePod". The coach picks who gets it in the phone's share sheet; the app sends nothing itself.
+ */
+export function shareNotesMessage(picked: Note[], studentName: string, coachName: string): string {
+  const firstName = studentName.trim().split(/\s+/)[0] || "there";
+  const intro = picked.length === 1 ? `Hi ${firstName}, here are your notes from our lesson:` : `Hi ${firstName}, here are your notes from our last ${picked.length} lessons:`;
+  const body = [...picked]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((note) => {
+      const date = new Date(note.date);
+      const when = `${date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${formatTime(date.getHours() * 60 + date.getMinutes())}`;
+      const lines = [when, `${note.lessonType} · ${note.duration}`];
+      if (isEmptyNote(note)) lines.push("No notes for this lesson.");
+      if (note.focus.trim()) lines.push(`Focus: ${note.focus.trim()}`);
+      if (note.observations.trim()) lines.push(note.observations.trim());
+      if (note.skills.length) lines.push(`Skills: ${note.skills.join(", ")}`);
+      if (note.nextSteps.trim()) lines.push(`Next: ${note.nextSteps.trim()}`);
+      return lines.join("\n");
+    });
+  const signOff = coachName.trim() ? `— ${coachName.trim()}, via SkatePod` : "— via SkatePod";
+  return [intro, ...body, signOff].join("\n\n");
 }
 
 export function formatShortDate(iso: string) {
