@@ -62,6 +62,8 @@ sh run-ui-tests.sh [.maestro/<folder or flow>]   # Maestro UI suite on the iOS S
 
 **iOS limits.** A pop-up can't open over a `Sheet`, so `Dropdown` and the native date/time wheels (`@react-native-community/datetimepicker`) open inline. Use `Dropdown` for any fixed-list value (disciplines, levels, tracks, student pickers), never free text.
 
+**Home.** Today's schedule card, then one "Coming up" list (no separate student list): the next 6 lessons, or while searching (name or level) each matching student with their next lesson, unscheduled ones last (`dashboardRows`). Rows show the student's levels and open the student.
+
 **Students.** First name or initials, plus disciplines (each a discipline and a level from `DISCIPLINES`). No `focus` or `progress` (removed Nov 2026). The next lesson is computed, never stored (`findNextLesson`, `nextLessonLabel`). Deleting a student deletes everything that's theirs (lessons, notes, programs, music files), on the phone too (`deletePhoneStudentData` in the store) and on the backend, and the confirm alert says so.
 
 **Calendar (weekly lessons).**

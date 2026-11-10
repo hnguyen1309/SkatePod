@@ -1082,6 +1082,43 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
   return { lesson, time, label: `${day}, ${formatTime(lesson.start)}` };
 }
 
+/** One row of the "Coming up" list on Home: a student and their lesson (null when nothing is scheduled). */
+export type DashboardRow = { key: string; studentId: string; lesson: Lesson | null; time: Date | null };
+
+/** How many lessons Home shows when the coach isn't searching. */
+export const DASHBOARD_UPCOMING = 6;
+
+/**
+ * The rows of the "Coming up" list on Home.
+ * - No search: the next few lessons, soonest first (a student can show up more than once).
+ * - Searching by name or level: one row per matching student with their next lesson, soonest first,
+ *   then the students with nothing scheduled (A to Z), so the search still finds every student.
+ */
+export function dashboardRows(students: Student[], lessons: Lesson[], query: string, now = new Date()): DashboardRow[] {
+  const search = query.trim().toLowerCase();
+  if (!search) {
+    return lessons
+      .map((lesson) => ({ lesson, time: nextLessonTime(lesson, now) }))
+      .filter((item): item is { lesson: Lesson; time: Date } => item.time !== null)
+      .sort((a, b) => a.time.getTime() - b.time.getTime())
+      .slice(0, DASHBOARD_UPCOMING)
+      .map(({ lesson, time }) => ({ key: lesson.id, studentId: lesson.studentId, lesson, time }));
+  }
+  const rows = students
+    .filter((student) => `${student.name} ${disciplineSummary(student)}`.toLowerCase().includes(search))
+    .map((student) => {
+      const next = findNextLesson(student.id, lessons, now);
+      return { key: student.id, studentId: student.id, lesson: next?.lesson ?? null, time: next?.time ?? null, name: student.name };
+    });
+  rows.sort((a, b) => {
+    if (a.time && b.time) return a.time.getTime() - b.time.getTime();
+    if (a.time) return -1;
+    if (b.time) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return rows.map(({ name: _name, ...row }) => row);
+}
+
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */
 export function nextLessonLabel(studentId: string, lessons: Lesson[]) {
   return findNextLesson(studentId, lessons)?.label ?? "Not scheduled";

@@ -4,6 +4,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  DASHBOARD_UPCOMING,
+  SAMPLE_LESSONS,
+  SAMPLE_STUDENTS,
+  dashboardRows,
   TONES,
   defaultTrackFor,
   studentFromApi,
@@ -711,5 +715,36 @@ describe("one-time and repeating lessons", () => {
     assert.deepEqual(moveToWeekday(oneTime, 0), { day: 0, startDate: "2026-11-09", endDate: "2026-11-09" });
     const weekly = { day: 1, startDate: "2026-11-10" };
     assert.deepEqual(moveToWeekday(weekly, 3), { day: 3, startDate: "2026-11-10" });
+  });
+});
+
+describe("Home: Coming up list", () => {
+  // Sunday Nov 8, 2026 at noon: every sample lesson is still ahead this week.
+  const sunday = new Date(2026, 10, 8, 12, 0);
+
+  test("without a search it shows the next lessons, soonest first", () => {
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "", sunday);
+    assert.equal(rows.length, DASHBOARD_UPCOMING);
+    assert.deepEqual(rows.map((row) => row.lesson?.id), ["l1", "l2", "l3", "l4", "l5", "l6"]);
+  });
+
+  test("a search by name shows that student once, with their next lesson", () => {
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "lily", sunday);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].studentId, "s2");
+    assert.equal(rows[0].lesson?.id, "l2");
+  });
+
+  test("a search by level finds students, and the ones with nothing scheduled come last", () => {
+    // "Gold" matches Emma (Gold skills), Sofia (Gold freeskate, no lessons) and Noah (Adult Gold, no lessons).
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "gold", sunday);
+    assert.deepEqual(rows.map((row) => row.studentId), ["s1", "s5", "s4"]);
+    assert.equal(rows[0].lesson?.id, "l3");
+    assert.equal(rows[1].lesson, null);
+    assert.equal(rows[2].time, null);
+  });
+
+  test("a search with no match gives no rows", () => {
+    assert.deepEqual(dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "zzz", sunday), []);
   });
 });

@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
-import { Avatar, Card, DisciplineBadges, Empty, Heading, Screen, SearchBar, SectionTitle, Button } from "../components/ui";
-import { WEEKDAYS, formatTime, disciplineSummary, initialsOf, isLessonActiveOn, nextLessonLabel, nextLessonTime, todayIndex, type Student } from "../data";
+import { Button, Card, DisciplineBadges, Empty, Heading, Screen, SearchBar, SectionTitle } from "../components/ui";
+import { FULL_WEEKDAYS, WEEKDAYS, dashboardRows, disciplineSummary, formatTime, isLessonActiveOn, todayIndex, type DashboardRow, type Student } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
-import { colors, lessonColors, radius } from "../theme";
+import { colors, lessonColors } from "../theme";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -19,24 +19,13 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   const [query, setQuery] = useState("");
   const firstName = settings.coachName.split(" ")[0] || "Coach";
 
-  const filtered = students.filter((student) =>
-    `${student.name} ${disciplineSummary(student)}`.toLowerCase().includes(query.toLowerCase()),
-  );
-
   const today = todayIndex();
   const todays = lessons.filter((lesson) => lesson.day === today && isLessonActiveOn(lesson, new Date())).sort((a, b) => a.start - b.start);
   const todaysMinutes = todays.reduce((sum, lesson) => sum + lesson.duration, 0);
 
-  const upcoming = useMemo(() => {
-    // Soonest first, using each lesson's next date (lessons that haven't started yet or have ended sort right).
-    const now = new Date();
-    return lessons
-      .map((lesson) => ({ lesson, time: nextLessonTime(lesson, now) }))
-      .filter((item): item is { lesson: (typeof lessons)[number]; time: Date } => item.time !== null)
-      .sort((a, b) => a.time.getTime() - b.time.getTime())
-      .slice(0, 6)
-      .map((item) => item.lesson);
-  }, [lessons, today]);
+  // One list for both jobs: the next lessons, or (while searching) each matching student and their next lesson.
+  // `today` is in the deps so the list refreshes when the day changes.
+  const rows = useMemo(() => dashboardRows(students, lessons, query), [students, lessons, query, today]);
 
   return (
     <Screen>
@@ -56,101 +45,86 @@ export function DashboardScreen({ navigate }: ScreenProps) {
         <SearchBar onChangeText={setQuery} placeholder="Search students..." value={query} />
       </View>
 
-      <SectionTitle
-        right={<Button label="View all" onPress={() => navigate("Students")} variant="link" />}
-        title={`Your students · ${students.length}`}
-      />
-      {filtered.length ? (
-        <View style={{ gap: 12, marginBottom: 28 }}>
-          {filtered.map((student) => (
-            <StudentCard
-              key={student.id}
-              nextLesson={nextLessonLabel(student.id, lessons)}
-              onPress={() => navigate("Students", { kind: "openStudent", studentId: student.id })}
-              student={student}
+      <SectionTitle right={<Button label="Calendar" onPress={() => navigate("Calendar")} variant="link" />} title="Coming up" />
+      {rows.length ? (
+        <Card style={{ padding: 0 }}>
+          {rows.map((row, index) => (
+            <UpcomingRow
+              first={index === 0}
+              key={row.key}
+              onPress={() => navigate("Students", { kind: "openStudent", studentId: row.studentId })}
+              row={row}
+              student={studentById(row.studentId)}
+              today={today}
             />
           ))}
-        </View>
+        </Card>
       ) : (
-        <View style={{ marginBottom: 28 }}>
-          <Empty text={query ? `No students match “${query}”.` : "No students yet. Add your first student."} />
-        </View>
+        <Empty text={query.trim() ? `No students match “${query.trim()}”.` : students.length ? "No lessons scheduled yet." : "No students yet. Add your first student."} />
       )}
-
-      <SectionTitle right={<Button label="Calendar" onPress={() => navigate("Calendar")} variant="link" />} title="Coming up" />
-      <Card style={{ padding: 0 }}>
-        {upcoming.length ? (
-          upcoming.map((lesson, index) => {
-            const student = studentById(lesson.studentId);
-            const palette = lessonColors[lesson.color];
-            return (
-              <View
-                key={lesson.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: 14,
-                  borderTopWidth: index ? 1 : 0,
-                  borderTopColor: colors.borderSoft,
-                }}
-              >
-                <View style={{ width: 4, alignSelf: "stretch", borderRadius: 2, backgroundColor: palette.border }} />
-                <View style={{ width: 62 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, letterSpacing: 1 }}>
-                    {lesson.day === today ? "TODAY" : WEEKDAYS[lesson.day]}
-                  </Text>
-                  <Text style={{ fontSize: 12, fontWeight: "600", color: colors.body, marginTop: 2 }}>{formatTime(lesson.start)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{student?.name ?? "Removed student"}</Text>
-                  <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>
-                    {lesson.type} · {lesson.duration}m
-                  </Text>
-                </View>
-              </View>
-            );
-          })
-        ) : (
-          <Text style={{ padding: 16, color: colors.muted }}>No lessons scheduled yet.</Text>
-        )}
-      </Card>
     </Screen>
   );
 }
 
-function StudentCard({ student, nextLesson, onPress }: { student: Student; nextLesson: string; onPress: () => void }) {
+/** One row of "Coming up": when, who (with their levels) and what kind of lesson. Tap to open the student. */
+function UpcomingRow({
+  row,
+  student,
+  today,
+  first,
+  onPress,
+}: {
+  row: DashboardRow;
+  student: Student | undefined;
+  today: number;
+  first: boolean;
+  onPress: () => void;
+}) {
+  const { lesson, time } = row;
+  const name = student?.name ?? "Removed student";
+  // What VoiceOver (and Maestro) reads for the whole row, e.g. "Lily Kim, Silver Freeskate · Bronze Pattern Dance, Tuesday 9:00 AM".
+  const when = lesson && time ? `${lesson.day === today ? "Today" : FULL_WEEKDAYS[lesson.day]} ${formatTime(lesson.start)}` : "Not scheduled";
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.8 }}>
-      <Card>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <Avatar initials={initialsOf(student.name)} size={44} tone={student.tone} />
-          <View style={{ flex: 1 }}>
-            <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "700", color: colors.text }}>
-              {student.name}
+    <Pressable
+      accessibilityLabel={student ? `${name}, ${disciplineSummary(student)}, ${when}` : `${name}, ${when}`}
+      accessibilityRole="button"
+      disabled={!student}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        padding: 14,
+        borderTopWidth: first ? 0 : 1,
+        borderTopColor: colors.borderSoft,
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <View style={{ width: 4, alignSelf: "stretch", borderRadius: 2, backgroundColor: lesson ? lessonColors[lesson.color].border : colors.borderSoft }} />
+      <View style={{ width: 62 }}>
+        {lesson ? (
+          <>
+            <Text style={{ fontSize: 10, fontWeight: "700", color: colors.muted, letterSpacing: 1 }}>
+              {lesson.day === today ? "TODAY" : WEEKDAYS[lesson.day]}
             </Text>
-            <View style={{ marginTop: 4 }}>
-              <DisciplineBadges disciplines={student.disciplines} />
-            </View>
-          </View>
-          <Icon color={colors.faint} name="chevron" size={16} />
-        </View>
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 14,
-            backgroundColor: "#f7f9fa",
-            borderRadius: radius.md,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-          }}
-        >
-          <Icon color="#5f9195" name="clock" size={15} />
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.subtle }}>{nextLesson}</Text>
-        </View>
-      </Card>
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.body, marginTop: 2 }}>{formatTime(lesson.start)}</Text>
+          </>
+        ) : (
+          <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted }}>Not scheduled</Text>
+        )}
+      </View>
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>
+          {name}
+        </Text>
+        {student && <DisciplineBadges disciplines={student.disciplines} />}
+        {lesson && (
+          <Text style={{ fontSize: 12, color: colors.muted }}>
+            {lesson.type} · {lesson.duration}m
+          </Text>
+        )}
+      </View>
+      {student && <Icon color={colors.faint} name="chevron" size={16} />}
     </Pressable>
   );
 }
