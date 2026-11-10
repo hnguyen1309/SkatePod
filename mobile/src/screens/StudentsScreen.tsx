@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
+import { NoteEditor, blankNote } from "../components/NoteEditor";
 import {
   Avatar,
   Button,
@@ -26,14 +27,20 @@ import {
   disciplineInfo,
   disciplineSummary,
   findNextLesson,
+  formatShortDate,
+  isEmptyNote,
   initialsOf,
   nextLessonLabel,
   newId,
+  notesForStudent,
+  phoneLink,
+  phoneProblem,
   placeFor,
   sortDisciplines,
   type DisciplineCategory,
   type DisciplineId,
   type Student,
+  type Note,
   type StudentDiscipline,
 } from "../data";
 import type { ScreenProps } from "../navigation";
@@ -44,11 +51,17 @@ type CategoryFilter = "ALL" | DisciplineCategory;
 const CATEGORY_FILTERS: CategoryFilter[] = ["ALL", ...DISCIPLINE_CATEGORIES.map((category) => category.id)];
 
 export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
-  const { students, saveStudent, deleteStudent, backendError, reloadFromBackend, lessons, availability, notes, programs } = useStore();
+  const { students, saveStudent, deleteStudent, backendError, reloadFromBackend, lessons, availability, notes, programs, saveNote, deleteNotes, settings } =
+    useStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ mode: "add" } | { mode: "edit"; student: Student } | null>(null);
+  // A note opened from the profile (a card or "New lesson note"). It slides in over the profile inside
+  // the same sheet, so nothing closes and the tab doesn't change.
+  const [openNote, setOpenNote] = useState<{ note: Note; isNew: boolean } | null>(null);
+  // The open note editor's "close without saving" (asks first if something changed), for when the whole sheet is swiped down.
+  const closeNoteRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!intent) return;
@@ -66,6 +79,33 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   const detail = students.find((student) => student.id === detailId);
   const detailNext = detail ? findNextLesson(detail.id, lessons) : null;
+  const detailNotes = detail ? notesForStudent(notes, detail.id) : [];
+
+  function closeProfile() {
+    if (openNote && closeNoteRef.current) {
+      closeNoteRef.current();
+      return;
+    }
+    setOpenNote(null);
+    setDetailId(null);
+  }
+
+  async function saveOpenNote(note: Note) {
+    if (await saveNote({ ...note, title: note.title || `${note.lessonType} lesson` })) setOpenNote(null);
+  }
+
+  function deleteOpenNote(note: Note) {
+    Alert.alert("Delete note?", "This can’t be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          if (await deleteNotes([note.id])) setOpenNote(null);
+        },
+      },
+    ]);
+  }
 
   // iOS can't present a new sheet while another is still sliding away,
   // so close the detail sheet first and continue a moment later.
@@ -149,16 +189,62 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
       <Button icon="plus" label="Add student" onPress={() => setEditor({ mode: "add" })} />
 
-      <Sheet onClose={() => setDetailId(null)} title={detail?.name ?? "Student"} visible={Boolean(detail)}>
-        {detail ? (
-          <View>
-            <View style={{ backgroundColor: colors.navy, borderRadius: radius.lg, padding: 18, marginBottom: 18 }}>
+      <Sheet
+        onClose={closeProfile}
+        pushed={
+          openNote ? (
+            <NoteEditor
+              closeRef={closeNoteRef}
+              inline
+              isNew={openNote.isNew}
+              key={openNote.note.id}
+              note={openNote.note}
+              onClose={() => setOpenNote(null)}
+              onDelete={() => deleteOpenNote(openNote.note)}
+              onSave={saveOpenNote}
+            />
+          ) : null
+        }
+        title={detail?.name ?? "Student"}
+        // The navy card stays put at the top while the snapshot and notes scroll under it.
+        top={
+          detail ? (
+            <View style={{ backgroundColor: colors.navy, borderRadius: radius.lg, padding: 18 }}>
+              {/* The pencil opens the editor. Its label stays "Edit profile" so screen readers and the Maestro flows find it. */}
+              <View style={{ position: "absolute", top: 14, right: 14 }}>
+                <IconButton
+                  background="rgba(255,255,255,0.14)"
+                  color={colors.white}
+                  icon="edit"
+                  label="Edit profile"
+                  onPress={() => closeDetailThen(() => setEditor({ mode: "edit", student: detail }))}
+                  size={36}
+                />
+              </View>
               <Avatar initials={initialsOf(detail.name)} size={48} tone={detail.tone} />
               <Text style={{ color: colors.white, fontSize: 20, fontWeight: "700", marginTop: 12 }}>{detail.name}</Text>
+              {detail.phone ? (
+                // Tap to call (the phone asks first).
+                <Pressable
+                  accessibilityLabel={`Call ${detail.phone}`}
+                  accessibilityRole="link"
+                  onPress={() => Linking.openURL(phoneLink(detail.phone ?? "")).catch(() => {})}
+                  style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, alignSelf: "flex-start" }, pressed && { opacity: 0.6 }]}
+                >
+                  <Icon color="rgba(255,255,255,0.85)" name="phone" size={14} />
+                  <Text style={{ color: "rgba(255,255,255,0.85)", fontSize: 14, fontWeight: "600" }}>{detail.phone}</Text>
+                </Pressable>
+              ) : null}
               <View style={{ marginTop: 8 }}>
                 <DisciplineBadges disciplines={detail.disciplines} emptyColor="rgba(255,255,255,0.6)" />
               </View>
             </View>
+          ) : null
+        }
+        visible={Boolean(detail)}
+      >
+        {detail ? (
+          <View>
             <Label>Training snapshot</Label>
             <DetailRow label="Weekly lessons" value={String(lessons.filter((lesson) => lesson.studentId === detail.id).length)} />
             <DetailRow label="Lesson notes" value={String(notes.filter((note) => note.studentId === detail.id).length)} />
@@ -176,21 +262,61 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
                   : "Add a lesson on the Calendar tab"}
               </Text>
             </View>
-            <View style={{ gap: 10 }}>
-              <Button
-                icon="notes"
-                label="View notes"
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Label>Recent notes</Label>
+              <Pressable
+                accessibilityRole="link"
+                hitSlop={8}
                 onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "filterNotes", studentId: detail.id }))}
-                variant="secondary"
-              />
-              <Button
-                icon="plus"
-                label="New lesson note"
-                onPress={() => closeDetailThen(() => navigate("Lessons", { kind: "newNote", studentId: detail.id }))}
-                variant="secondary"
-              />
-              <Button label="Edit profile" onPress={() => closeDetailThen(() => setEditor({ mode: "edit", student: detail }))} />
+                style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 2, marginBottom: 8 }, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>Go to notes center</Text>
+                <Icon color={colors.teal} name="chevron" size={14} />
+              </Pressable>
             </View>
+            {detailNotes.length ? (
+              // This student's notes, newest first, as full-width cards in a column (the sheet scrolls them).
+              // Tapping one slides it in over the profile.
+              <View style={{ gap: 10, marginBottom: 12 }}>
+                {detailNotes.map((note) => {
+                  const empty = isEmptyNote(note);
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={note.id}
+                      onPress={() => setOpenNote({ note, isNew: false })}
+                      style={({ pressed }) => [
+                        { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: 14 },
+                        pressed && { opacity: 0.7 },
+                      ]}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "700", color: colors.text }}>
+                          {note.lessonType} · {note.duration}
+                        </Text>
+                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{formatShortDate(note.date)}</Text>
+                      </View>
+                      <Text
+                        numberOfLines={2}
+                        style={{ fontSize: 13, lineHeight: 18, color: colors.subtle, marginTop: 4, fontStyle: empty ? "italic" : "normal" }}
+                      >
+                        {empty ? "No notes yet" : note.observations || note.focus || note.nextSteps || note.skills.join(", ")}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={{ marginBottom: 12 }}>
+                <Empty text="No lesson notes yet." />
+              </View>
+            )}
+            <Button
+              icon="plus"
+              label="New lesson note"
+              onPress={() => setOpenNote({ note: blankNote(settings, detail.id), isNew: true })}
+              variant="secondary"
+            />
           </View>
         ) : null}
       </Sheet>
@@ -225,6 +351,7 @@ function StudentEditor({
   toneIndex: number;
 }) {
   const [name, setName] = useState(student?.name ?? "");
+  const [phone, setPhone] = useState(student?.phone ?? "");
   const [disciplines, setDisciplines] = useState<StudentDiscipline[]>(sortDisciplines(student?.disciplines ?? []));
 
   // Only disciplines the student doesn't have yet can be added.
@@ -248,9 +375,15 @@ function StudentEditor({
       Alert.alert("Add a name", "Please enter the student’s name. First names or initials are fine.");
       return;
     }
+    const phoneIssue = phoneProblem(phone);
+    if (phoneIssue) {
+      Alert.alert("Check the phone number", phoneIssue);
+      return;
+    }
     onSave({
       id: student?.id ?? newId(),
       name: name.trim(),
+      ...(phone.trim() ? { phone: phone.trim() } : {}),
       disciplines,
       tone: student?.tone ?? TONES[toneIndex % TONES.length],
     });
@@ -270,6 +403,7 @@ function StudentEditor({
       visible
     >
       <Field autoCapitalize="words" label="Student name" onChangeText={setName} placeholder="First name or initials" value={name} />
+      <Field keyboardType="phone-pad" label="Phone number" onChangeText={setPhone} placeholder="Optional, e.g. (555) 010-2030" value={phone} />
       <Label>Disciplines and levels</Label>
       {disciplines.map((item) => {
         const info = disciplineInfo(item.discipline);

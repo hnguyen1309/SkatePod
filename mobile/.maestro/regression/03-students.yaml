@@ -1,4 +1,5 @@
-# Students: filter, add (with the name check), add a discipline and level, edit, delete.
+# Students: filter, add (with the name check), add a discipline and level, edit (pencil on the profile card),
+# delete, and the profile's note cards with the "Go to notes center" link.
 appId: host.exp.Exponent
 name: Students add, edit, delete
 tags: [regression]
@@ -33,6 +34,11 @@ tags: [regression]
     index: 1
 - tapOn: "Learn to Skate · Learn to Skate"
 - assertVisible: "Level"
+# The phone keypad has no Return key, so type the number last; Save stays above the keyboard.
+- tapOn:
+    text: "Phone number"
+    index: 1
+- inputText: "5550102030"
 - tapOn: "Save student"
 - scrollUntilVisible:
     element: ".*Test Skater.*"
@@ -41,8 +47,12 @@ tags: [regression]
 # The detail sheet, then edit the name.
 - tapOn: ".*Test Skater.*"
 - assertVisible: "Training snapshot"
+- assertVisible: ".*5550102030.*"   # the phone number on the navy card
 - assertVisible: "Not started"
-- tapOn: "Edit profile"
+- scrollUntilVisible:
+    element: "Go to notes center"
+- assertVisible: "No lesson notes yet."
+- tapOn: "Edit profile"   # the pencil on the blue card
 - assertVisible: "Edit student"
 - tapOn:
     text: "Student name"
@@ -67,3 +77,18 @@ tags: [regression]
     text: "Delete"
     index: 0
 - assertNotVisible: ".*Test Edited.*"
+
+# A student with notes shows them as cards. A card slides the note in over the profile (same sheet),
+# Back slides it away again, and the link opens the Lessons tab filtered to that student.
+- scrollUntilVisible:
+    element: ".*Lily Kim.*"
+- tapOn: ".*Lily Kim.*"
+- scrollUntilVisible:
+    element: "Go to notes center"
+- tapOn: ".*Public · 45 minutes.*"
+- assertVisible: "Save note"
+- tapOn: "Back"
+- assertVisible: "Go to notes center"
+- tapOn: "Go to notes center"
+- assertVisible: "Filter by student name..."
+- assertVisible: ".*Lily Kim.*"

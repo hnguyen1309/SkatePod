@@ -4,6 +4,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  phoneLink,
+  phoneProblem,
+  notesForStudent,
   DASHBOARD_UPCOMING,
   SAMPLE_LESSONS,
   SAMPLE_STUDENTS,
@@ -390,6 +393,7 @@ describe("students on the backend", () => {
     });
     assert.deepEqual(body, {
       name: "Lily Kim",
+      phone: null,
       disciplines: [
         { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
         { discipline: "ADULT_SKILLS", track: "ADULT", level: "Adult Bronze" },
@@ -746,5 +750,54 @@ describe("Home: Coming up list", () => {
 
   test("a search with no match gives no rows", () => {
     assert.deepEqual(dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "zzz", sunday), []);
+  });
+});
+
+describe("notesForStudent", () => {
+  const note = (id: string, studentId: string, date: string) =>
+    ({ id, studentId, date, title: "", lessonType: "Freestyle", duration: "60 minutes", overall: "", focus: "", observations: "", nextSteps: "", skills: [], shared: false }) as Note;
+
+  test("keeps only that student's notes, newest first", () => {
+    const notes = [note("a", "s1", "2026-11-01"), note("b", "s2", "2026-11-05"), note("c", "s1", "2026-11-08"), note("d", "s1", "2026-10-20")];
+    assert.deepEqual(notesForStudent(notes, "s1").map((item) => item.id), ["c", "a", "d"]);
+  });
+
+  test("is empty for a student without notes", () => {
+    assert.deepEqual(notesForStudent([note("a", "s1", "2026-11-01")], "s9"), []);
+  });
+});
+
+describe("phoneProblem", () => {
+  test("blank is fine: the phone number is optional", () => {
+    assert.equal(phoneProblem(""), null);
+    assert.equal(phoneProblem("   "), null);
+  });
+
+  test("accepts 7 to 15 digits with spaces and + ( ) - .", () => {
+    assert.equal(phoneProblem("+1 (555) 010-2030"), null);
+    assert.equal(phoneProblem("555.0102"), null);
+  });
+
+  test("refuses letters and too few or too many digits", () => {
+    assert.match(phoneProblem("555-CALL") ?? "", /digits only/);
+    assert.match(phoneProblem("555-01") ?? "", /7 to 15/);
+    assert.match(phoneProblem("1234567890123456") ?? "", /7 to 15/);
+  });
+
+  test("phoneLink keeps only digits and +", () => {
+    assert.equal(phoneLink("+1 (555) 010-2030"), "tel:+15550102030");
+  });
+});
+
+describe("student phone and the API", () => {
+  test("studentToApi sends a trimmed phone, or null", () => {
+    assert.equal(studentToApi({ name: "Emma", disciplines: [], phone: " 555 0102 " }).phone, "555 0102");
+    assert.equal(studentToApi({ name: "Emma", disciplines: [], phone: "  " }).phone, null);
+    assert.equal(studentToApi({ name: "Emma", disciplines: [] }).phone, null);
+  });
+
+  test("studentFromApi keeps the phone and leaves it out when there is none", () => {
+    assert.equal(studentFromApi({ id: "a", name: "Emma", phone: "555 0102", disciplines: [] }).phone, "555 0102");
+    assert.equal("phone" in studentFromApi({ id: "a", name: "Emma", phone: null, disciplines: [] }), false);
   });
 });
