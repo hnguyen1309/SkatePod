@@ -76,6 +76,28 @@ class StudentServiceTest {
     }
 
     @Test
+    @DisplayName("A phone number is optional, trimmed, and blank means none")
+    void phoneIsOptionalAndTrimmed() {
+        saveReturnsTheStudent();
+        when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());
+
+        assertThat(service.create(new StudentRequest("Emma", List.of(), "  +1 (555) 010-2030 ")).phone()).isEqualTo("+1 (555) 010-2030");
+        assertThat(service.create(new StudentRequest("Emma", List.of(), "   ")).phone()).isNull();
+        assertThat(service.create(new StudentRequest("Emma", List.of())).phone()).isNull();
+    }
+
+    @Test
+    @DisplayName("A phone number needs 7 to 15 digits")
+    void phoneNeedsSevenToFifteenDigits() {
+        assertThatThrownBy(() -> service.create(new StudentRequest("Emma", List.of(), "555-01")))
+                .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.create(new StudentRequest("Emma", List.of(), "1234567890123456")))
+                .isInstanceOf(BadRequestException.class);
+        verify(students, never()).save(any());
+        assertThat(StudentService.checkPhone("555 0102")).isEqualTo("555 0102");
+    }
+
+    @Test
     void createWithoutDisciplinesIsAllowed() {
         saveReturnsTheStudent();
         when(nextLessonCalculator.findNext(anyList(), any())).thenReturn(Optional.empty());

@@ -87,7 +87,7 @@ Stop the database with `docker compose down` (add `-v` to wipe its data).
 
 Errors come back as JSON "problem details": **400** for invalid input, **404** for unknown IDs and **409** for a clash.
 
-**Students.** A student has a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`), a track (`CHAMPIONSHIP`, `EXCEL` or `ADULT`) and a level from that discipline's own ladder (for example `Pre-Gold`). The track isn't shown on the student profile; it's there so a new program starts on the student's track. Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong.
+**Students.** A student has an optional `phone` (digits, spaces and `+ ( ) - .`, 7 to 15 digits, otherwise a 400; leave it out or send `null` for none) and a list of `disciplines`, which can be empty. Each item has a discipline (for example `STANDARD_FREESKATE`), a track (`CHAMPIONSHIP`, `EXCEL` or `ADULT`) and a level from that discipline's own ladder (for example `Pre-Gold`). The track isn't shown on the student profile; it's there so a new program starts on the student's track. Using a level from another discipline, or listing the same discipline twice, returns a 400 that explains what's wrong.
 
 **Lessons repeat every week**, like the app's calendar: a `dayOfWeek` (`MONDAY` ...), a `startTime` (any minute), `durationMinutes` (5 to 240) and a `type` (`Public`, `Freestyle` or `Off-ice`; the `color` follows from it). A lesson runs from `startDate` to an optional `endDate`. Leave `startDate` out and a new lesson starts today; it can't start before today. Each lesson also shows the `place` of the availability block it starts in, if any.
 
@@ -122,7 +122,7 @@ src/main/resources/
 
 **Request flow:** Controller (HTTP + validation) → Service (business rules, transactions, entity ↔ DTO) → Repository (database). Entities never leave the service layer; the API only returns DTOs.
 
-**Database changes:** never edit an applied migration. Add the next file, like `V9__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
+**Database changes:** never edit an applied migration. Add the next file, like `V10__add_something.sql`. Hibernate is set to `validate`, so the app won't start if an entity and the schema disagree.
 
 ## Your first feature: next lesson from the calendar ✅
 

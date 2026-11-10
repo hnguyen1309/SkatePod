@@ -4,6 +4,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  phoneLink,
+  phoneProblem,
+  notesForStudent,
+  DASHBOARD_UPCOMING,
+  SAMPLE_LESSONS,
+  SAMPLE_STUDENTS,
+  dashboardRows,
   TONES,
   defaultTrackFor,
   studentFromApi,
@@ -386,6 +393,7 @@ describe("students on the backend", () => {
     });
     assert.deepEqual(body, {
       name: "Lily Kim",
+      phone: null,
       disciplines: [
         { discipline: "STANDARD_FREESKATE", track: "EXCEL", level: "Silver" },
         { discipline: "ADULT_SKILLS", track: "ADULT", level: "Adult Bronze" },
@@ -711,5 +719,85 @@ describe("one-time and repeating lessons", () => {
     assert.deepEqual(moveToWeekday(oneTime, 0), { day: 0, startDate: "2026-11-09", endDate: "2026-11-09" });
     const weekly = { day: 1, startDate: "2026-11-10" };
     assert.deepEqual(moveToWeekday(weekly, 3), { day: 3, startDate: "2026-11-10" });
+  });
+});
+
+describe("Home: Coming up list", () => {
+  // Sunday Nov 8, 2026 at noon: every sample lesson is still ahead this week.
+  const sunday = new Date(2026, 10, 8, 12, 0);
+
+  test("without a search it shows the next lessons, soonest first", () => {
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "", sunday);
+    assert.equal(rows.length, DASHBOARD_UPCOMING);
+    assert.deepEqual(rows.map((row) => row.lesson?.id), ["l1", "l2", "l3", "l4", "l5", "l6"]);
+  });
+
+  test("a search by name shows that student once, with their next lesson", () => {
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "lily", sunday);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].studentId, "s2");
+    assert.equal(rows[0].lesson?.id, "l2");
+  });
+
+  test("a search by level finds students, and the ones with nothing scheduled come last", () => {
+    // "Gold" matches Emma (Gold skills), Sofia (Gold freeskate, no lessons) and Noah (Adult Gold, no lessons).
+    const rows = dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "gold", sunday);
+    assert.deepEqual(rows.map((row) => row.studentId), ["s1", "s5", "s4"]);
+    assert.equal(rows[0].lesson?.id, "l3");
+    assert.equal(rows[1].lesson, null);
+    assert.equal(rows[2].time, null);
+  });
+
+  test("a search with no match gives no rows", () => {
+    assert.deepEqual(dashboardRows(SAMPLE_STUDENTS, SAMPLE_LESSONS, "zzz", sunday), []);
+  });
+});
+
+describe("notesForStudent", () => {
+  const note = (id: string, studentId: string, date: string) =>
+    ({ id, studentId, date, title: "", lessonType: "Freestyle", duration: "60 minutes", overall: "", focus: "", observations: "", nextSteps: "", skills: [], shared: false }) as Note;
+
+  test("keeps only that student's notes, newest first", () => {
+    const notes = [note("a", "s1", "2026-11-01"), note("b", "s2", "2026-11-05"), note("c", "s1", "2026-11-08"), note("d", "s1", "2026-10-20")];
+    assert.deepEqual(notesForStudent(notes, "s1").map((item) => item.id), ["c", "a", "d"]);
+  });
+
+  test("is empty for a student without notes", () => {
+    assert.deepEqual(notesForStudent([note("a", "s1", "2026-11-01")], "s9"), []);
+  });
+});
+
+describe("phoneProblem", () => {
+  test("blank is fine: the phone number is optional", () => {
+    assert.equal(phoneProblem(""), null);
+    assert.equal(phoneProblem("   "), null);
+  });
+
+  test("accepts 7 to 15 digits with spaces and + ( ) - .", () => {
+    assert.equal(phoneProblem("+1 (555) 010-2030"), null);
+    assert.equal(phoneProblem("555.0102"), null);
+  });
+
+  test("refuses letters and too few or too many digits", () => {
+    assert.match(phoneProblem("555-CALL") ?? "", /digits only/);
+    assert.match(phoneProblem("555-01") ?? "", /7 to 15/);
+    assert.match(phoneProblem("1234567890123456") ?? "", /7 to 15/);
+  });
+
+  test("phoneLink keeps only digits and +", () => {
+    assert.equal(phoneLink("+1 (555) 010-2030"), "tel:+15550102030");
+  });
+});
+
+describe("student phone and the API", () => {
+  test("studentToApi sends a trimmed phone, or null", () => {
+    assert.equal(studentToApi({ name: "Emma", disciplines: [], phone: " 555 0102 " }).phone, "555 0102");
+    assert.equal(studentToApi({ name: "Emma", disciplines: [], phone: "  " }).phone, null);
+    assert.equal(studentToApi({ name: "Emma", disciplines: [] }).phone, null);
+  });
+
+  test("studentFromApi keeps the phone and leaves it out when there is none", () => {
+    assert.equal(studentFromApi({ id: "a", name: "Emma", phone: "555 0102", disciplines: [] }).phone, "555 0102");
+    assert.equal("phone" in studentFromApi({ id: "a", name: "Emma", phone: null, disciplines: [] }), false);
   });
 });

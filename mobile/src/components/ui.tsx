@@ -1,5 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  Animated,
+  Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -152,7 +155,7 @@ export function Field({
   placeholder?: string;
   multiline?: boolean;
   rows?: number;
-  keyboardType?: "default" | "email-address" | "number-pad";
+  keyboardType?: "default" | "email-address" | "number-pad" | "phone-pad";
   autoCapitalize?: "none" | "sentences" | "words";
 }) {
   return (
@@ -423,28 +426,111 @@ export function Sheet({
   onClose,
   children,
   footer,
+  top,
+  pushed = null,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  // Shown under the title and above the scrolling part, so it stays still while the rest scrolls.
+  top?: ReactNode;
+  // A second page shown over this one inside the same sheet (e.g. a note opened from a student's profile).
+  // It slides in from the right when set and back out when it goes back to null, instead of opening a new sheet.
+  pushed?: ReactNode | null;
 }) {
   return (
     <Modal animationType="slide" onRequestClose={onClose} presentationStyle="pageSheet" visible={visible}>
-      <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: colors.white }}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-          <View style={styles.sheetHeader}>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text, flex: 1 }}>{title}</Text>
-            <IconButton icon="close" label="Close" onPress={onClose} />
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-          {footer ? <View style={styles.sheetFooter}>{footer}</View> : null}
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: colors.white }}>
+        {/* While a page is pushed on top, hide this one from screen readers (and Maestro) so they only see the top page. */}
+        <View accessibilityElementsHidden={Boolean(pushed)} importantForAccessibility={pushed ? "no-hide-descendants" : "auto"} style={{ flex: 1 }}>
+          <SheetFrame>
+            <SheetPage footer={footer} onClose={onClose} title={title} top={top}>
+              {children}
+            </SheetPage>
+          </SheetFrame>
+        </View>
+        <PushedPage page={pushed} />
+      </View>
     </Modal>
+  );
+}
+
+// Keeps a sheet page clear of the home indicator and moves its footer up with the keyboard.
+function SheetFrame({ children }: { children: ReactNode }) {
+  return (
+    <SafeAreaView edges={["bottom"]} style={{ flex: 1, backgroundColor: colors.white }}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+        {children}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+/** The inside of a sheet (header, scrolling body, optional footer) without the Modal around it. */
+export function SheetPage({
+  title,
+  onClose,
+  onBack,
+  children,
+  footer,
+  top,
+}: {
+  title: string;
+  onClose: () => void;
+  top?: ReactNode;
+  // With onBack, the header shows a back arrow instead of the X (for a page pushed inside a sheet).
+  onBack?: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  visible?: boolean; // unused; lets callers swap Sheet and SheetPage with the same props
+}) {
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.white }}>
+      <View style={styles.sheetHeader}>
+        {onBack ? (
+          <View style={{ marginRight: 10 }}>
+            <IconButton icon="chevronLeft" label="Back" onPress={onBack} />
+          </View>
+        ) : null}
+        <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text, flex: 1 }}>{title}</Text>
+        {onBack ? null : <IconButton icon="close" label="Close" onPress={onClose} />}
+      </View>
+      {top ? <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>{top}</View> : null}
+      <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+        {children}
+      </ScrollView>
+      {footer ? <View style={styles.sheetFooter}>{footer}</View> : null}
+    </View>
+  );
+}
+
+/**
+ * Slides `page` in from the right over the sheet when it's set, and back out when it goes back to null,
+ * like going one screen deeper in an iPhone app. It keeps showing the last page while sliding out.
+ */
+function PushedPage({ page }: { page: ReactNode | null }) {
+  const width = Dimensions.get("window").width;
+  const offset = useRef(new Animated.Value(width)).current;
+  const [shown, setShown] = useState<ReactNode | null>(page);
+
+  useEffect(() => {
+    if (page) {
+      setShown(page);
+      Animated.timing(offset, { toValue: 0, duration: 280, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    } else {
+      Animated.timing(offset, { toValue: width, duration: 240, easing: Easing.in(Easing.cubic), useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setShown(null);
+      });
+    }
+  }, [page, offset, width]);
+
+  if (!shown) return null;
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: offset }], shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 12 }]}>
+      <SheetFrame>{page ?? shown}</SheetFrame>
+    </Animated.View>
   );
 }
 

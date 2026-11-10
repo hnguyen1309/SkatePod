@@ -59,15 +59,29 @@ public class StudentService {
 
     @Transactional
     public StudentResponse create(StudentRequest request) {
-        Student student = students.save(new Student(request.name().trim(), toDisciplines(request.disciplines())));
+        Student student = students.save(new Student(request.name().trim(), checkPhone(request.phone()), toDisciplines(request.disciplines())));
         return toResponse(student, List.of());
     }
 
     @Transactional
     public StudentResponse update(UUID id, StudentRequest request) {
         Student student = find(id);
-        student.update(request.name().trim(), toDisciplines(request.disciplines()));
+        student.update(request.name().trim(), checkPhone(request.phone()), toDisciplines(request.disciplines()));
         return toResponse(student, lessons.findAllByStudentId(id));
+    }
+
+    /**
+     * A phone number is optional. When there is one it's trimmed and needs 7 to 15 digits (spaces and
+     * + ( ) - . around them are fine; StudentRequest already refused other characters).
+     * Same rule as phoneProblem in the app's data.ts.
+     */
+    static String checkPhone(String phone) {
+        if (phone == null || phone.isBlank()) return null;
+        long digits = phone.chars().filter(Character::isDigit).count();
+        if (digits < 7 || digits > 15) {
+            throw new BadRequestException("A phone number needs 7 to 15 digits.");
+        }
+        return phone.trim();
     }
 
     /**
@@ -131,6 +145,7 @@ public class StudentService {
         return new StudentResponse(
                 student.getId(),
                 student.getName(),
+                student.getPhone(),
                 disciplines,
                 nextLesson,
                 student.getCreatedAt(),

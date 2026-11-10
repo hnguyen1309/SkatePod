@@ -41,6 +41,7 @@ export type StudentDiscipline = { discipline: DisciplineId; level: string; track
 export type Student = {
   id: string;
   name: string;
+  phone?: string; // optional, kept as typed ("+1 (555) 010-2030"); checked with phoneProblem
   disciplines: StudentDiscipline[]; // can be empty
   // The next lesson isn't stored here: it comes from the calendar (findNextLesson). "Current focus"
   // and a hand-set progress % were removed (Nov 2026): nobody kept them up to date.
@@ -396,14 +397,35 @@ export const TONES: Tone[] = [
 export type ApiStudent = {
   id: string;
   name: string;
+  phone?: string | null;
   disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
 };
 
 /** What the backend expects for POST and PUT /api/students. */
 export type ApiStudentRequest = {
   name: string;
+  phone: string | null;
   disciplines: { discipline: DisciplineId; track: ApiTrack; level: string }[];
 };
+
+/**
+ * What's wrong with a phone number, or null if it's fine. It's optional (blank is fine); otherwise only
+ * digits, spaces and + ( ) - . and 7 to 15 digits. Same rule as StudentService.checkPhone on the backend.
+ */
+export function phoneProblem(phone: string): string | null {
+  const value = phone.trim();
+  if (!value) return null;
+  if (!/^[0-9+()\-. ]+$/.test(value)) return "Use digits only (spaces and + ( ) - . are fine).";
+  const digits = value.replace(/\D/g, "").length;
+  if (digits < 7 || digits > 15) return "A phone number needs 7 to 15 digits.";
+  if (value.length > 30) return "That phone number is too long.";
+  return null;
+}
+
+/** The link that starts a call on the phone ("tel:+15550102030"). */
+export function phoneLink(phone: string) {
+  return `tel:${phone.replace(/[^0-9+]/g, "")}`;
+}
 
 /** The track a new discipline gets: Adult for the adult disciplines, Championship for the rest. */
 export function defaultTrackFor(discipline: DisciplineId): ApiTrack {
@@ -424,15 +446,17 @@ export function studentFromApi(student: ApiStudent): Student {
   return {
     id: student.id,
     name: student.name,
+    ...(student.phone ? { phone: student.phone } : {}),
     disciplines: student.disciplines.map(({ discipline, track, level }) => ({ discipline, track, level })),
     tone: toneFor(student.id),
   };
 }
 
 /** The body for POST/PUT /api/students. Keeps each discipline's track, or gives it the default one. */
-export function studentToApi(student: Pick<Student, "name" | "disciplines">): ApiStudentRequest {
+export function studentToApi(student: Pick<Student, "name" | "disciplines" | "phone">): ApiStudentRequest {
   return {
     name: student.name,
+    phone: student.phone?.trim() || null,
     disciplines: student.disciplines.map(({ discipline, track, level }) => ({
       discipline,
       track: track ?? defaultTrackFor(discipline),
@@ -795,7 +819,7 @@ function daysAgo(days: number) {
 // All sample people below are made up.
 export const SAMPLE_STUDENTS: Student[] = [
   { id: "s1", name: "Emma Miller", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Pre-Gold" }, { discipline: "STANDARD_SKILLS", level: "Gold" }], tone: TONES[0] },
-  { id: "s2", name: "Lily Kim", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], tone: TONES[1] },
+  { id: "s2", name: "Lily Kim", phone: "(555) 010-2030", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Silver" }, { discipline: "PATTERN_DANCE", level: "Bronze" }], tone: TONES[1] },
   { id: "s3", name: "Jonah Reed", disciplines: [{ discipline: "STANDARD_SKILLS", level: "Preliminary" }], tone: TONES[2] },
   { id: "s4", name: "Sofia Chen", disciplines: [{ discipline: "STANDARD_FREESKATE", level: "Gold" }, { discipline: "FREE_DANCE", level: "Juvenile" }], tone: TONES[3] },
   { id: "s5", name: "Noah Bennett", disciplines: [{ discipline: "ADULT_FREESKATE", level: "Adult Gold" }, { discipline: "ADULT_SKILLS", level: "Adult Silver" }], tone: TONES[4] },
@@ -1026,6 +1050,11 @@ export function matchesHistoryFilter(
   return true;
 }
 
+/** A student's lesson notes, newest first (for the note cards on the student's profile). */
+export function notesForStudent(notes: Note[], studentId: string): Note[] {
+  return notes.filter((note) => note.studentId === studentId).sort((a, b) => b.date.localeCompare(a.date));
+}
+
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -1080,6 +1109,43 @@ export function findNextLesson(studentId: string, lessons: Lesson[], now = new D
             ? `Next ${FULL_WEEKDAYS[lesson.day]}`
             : time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   return { lesson, time, label: `${day}, ${formatTime(lesson.start)}` };
+}
+
+/** One row of the "Coming up" list on Home: a student and their lesson (null when nothing is scheduled). */
+export type DashboardRow = { key: string; studentId: string; lesson: Lesson | null; time: Date | null };
+
+/** How many lessons Home shows when the coach isn't searching. */
+export const DASHBOARD_UPCOMING = 6;
+
+/**
+ * The rows of the "Coming up" list on Home.
+ * - No search: the next few lessons, soonest first (a student can show up more than once).
+ * - Searching by name or level: one row per matching student with their next lesson, soonest first,
+ *   then the students with nothing scheduled (A to Z), so the search still finds every student.
+ */
+export function dashboardRows(students: Student[], lessons: Lesson[], query: string, now = new Date()): DashboardRow[] {
+  const search = query.trim().toLowerCase();
+  if (!search) {
+    return lessons
+      .map((lesson) => ({ lesson, time: nextLessonTime(lesson, now) }))
+      .filter((item): item is { lesson: Lesson; time: Date } => item.time !== null)
+      .sort((a, b) => a.time.getTime() - b.time.getTime())
+      .slice(0, DASHBOARD_UPCOMING)
+      .map(({ lesson, time }) => ({ key: lesson.id, studentId: lesson.studentId, lesson, time }));
+  }
+  const rows = students
+    .filter((student) => `${student.name} ${disciplineSummary(student)}`.toLowerCase().includes(search))
+    .map((student) => {
+      const next = findNextLesson(student.id, lessons, now);
+      return { key: student.id, studentId: student.id, lesson: next?.lesson ?? null, time: next?.time ?? null, name: student.name };
+    });
+  rows.sort((a, b) => {
+    if (a.time && b.time) return a.time.getTime() - b.time.getTime();
+    if (a.time) return -1;
+    if (b.time) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return rows.map(({ name: _name, ...row }) => row);
 }
 
 /** Like findNextLesson, but just the text, e.g. "Tomorrow, 7:00 AM" or "Not scheduled". */

@@ -8,6 +8,7 @@ import java.util.UUID;
 public record StudentResponse(
         UUID id,
         String name,
+        String phone, // null when the student has none
         List<StudentDisciplineResponse> disciplines,
         NextLessonResponse nextLesson,
         Instant createdAt,

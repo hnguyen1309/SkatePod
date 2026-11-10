@@ -22,6 +22,7 @@ export type IconName =
   | "down"
   | "close"
   | "edit"
+  | "phone"
   | "grip";
 
 const paths: Record<IconName, ReactNode> = {
@@ -99,6 +100,7 @@ const paths: Record<IconName, ReactNode> = {
   down: <Path d="m6 9 6 6 6-6" />,
   close: <Path d="M6 6l12 12M18 6 6 18" />,
   edit: <Path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />,
+  phone: <Path d="M5 4h3l2 5-2.5 1.5a11 11 0 0 0 6 6L15 14l5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2Z" />,
   // Six dots: the usual "drag me" handle.
   grip: (
     <>

@@ -46,7 +46,7 @@ Change the coach name, then tap Home: the change is gone with no warning. The Sa
 Calendar → lesson editor → Duration (minutes) opens a number pad with no Return or Done key. You have to tap somewhere else to close it. Also, clearing the box or typing 0 keeps the old duration silently (the box shows blank but the lesson saves with the previous length).
 
 ### 9. VoiceOver reads whole cards as one long label (SKATE-90)
-Student rows, Dashboard cards, calendar lesson blocks and day buttons are each read as one run-on label (e.g. "Noah Bennett, Adult Gold · Adult Freeskate, Adult Silver · Adult Skills, Not scheduled"). It works, but it's long, and the tests have to match names inside the label. Give each card a short `accessibilityLabel` (for example "Noah Bennett, next lesson not scheduled").
+Student rows, calendar lesson blocks and day buttons are each read as one run-on label (e.g. "Noah Bennett, Adult Gold · Adult Freeskate, Adult Silver · Adult Skills, Not scheduled"). It works, but it's long, and the tests have to match names inside the label. Give each card a short `accessibilityLabel` (for example "Noah Bennett, next lesson not scheduled").
 
 ## Checked by hand (not automated)
 

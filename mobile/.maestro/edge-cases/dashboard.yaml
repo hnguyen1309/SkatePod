@@ -1,0 +1,27 @@
+# Home edge cases: searching for a student who has no lessons, and searching by level.
+# Runs without the backend, from the sample data.
+appId: host.exp.Exponent
+name: Dashboard edge cases
+tags: [edge-case]
+---
+- runFlow: ../subflows/start.yaml
+
+# 1. A student with no lessons still shows up in the search, marked "Not scheduled", and opens.
+- tapOn: "Search students..."
+- inputText: "Amelia"
+- pressKey: Enter
+- assertVisible: ".*Amelia Park.*Not scheduled.*"
+- tapOn: ".*Amelia Park.*"
+- assertVisible: "Training snapshot"
+- tapOn: "Close"
+
+# 2. Search by level: "Gold" finds Emma, Sofia and Noah, and not Lily.
+- tapOn: "Home"
+- tapOn: "Search students..."
+- eraseText: 10
+- inputText: "Gold"
+- pressKey: Enter
+- assertVisible: ".*Emma Miller.*"
+- assertVisible: ".*Sofia Chen.*"
+- assertVisible: ".*Noah Bennett.*"
+- assertNotVisible: ".*Lily Kim.*"

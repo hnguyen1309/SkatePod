@@ -1,5 +1,6 @@
-# Students edge cases: saving without a name, the same discipline twice, a search with no results, and a
-# student added then cancelled. Runs without the backend, from the sample data.
+# Students edge cases: saving without a name, the same discipline twice, a search with no results, a
+# student added then cancelled, a note from the profile that's left without saving, and a phone number
+# with too few digits. Runs without the backend, from the sample data.
 appId: host.exp.Exponent
 name: Students edge cases
 tags: [edge-case]
@@ -51,3 +52,39 @@ tags: [edge-case]
 - assertVisible: "No students match those filters."
 - eraseText: 10
 - assertVisible: ".*Emma Miller.*"
+
+# 5. A new note from a profile: Back with something typed asks "Discard changes?"; Discard slides back to the profile.
+- tapOn: ".*Emma Miller.*"
+- scrollUntilVisible:
+    element: "New lesson note"
+- tapOn: "New lesson note"
+- assertVisible: "Add past lesson"
+- tapOn:
+    text: "Session focus"
+    index: 1
+- inputText: "Edges"
+- pressKey: Enter
+- tapOn: "Back"
+- assertVisible: "Discard changes\\?"
+- tapOn: "Discard"
+- assertVisible: "Go to notes center"
+- assertNotVisible: "Add past lesson"
+- tapOn: "Close"
+
+# 6. A phone number with too few digits is refused with "Check the phone number", and the form stays open.
+- tapOn: "Add student"
+- tapOn:
+    text: "Student name"
+    index: 1
+- inputText: "Phone Check"
+- pressKey: Enter
+- tapOn:
+    text: "Phone number"
+    index: 1
+- inputText: "55501"
+- tapOn: "Save student"
+- assertVisible: "Check the phone number"
+- tapOn: "OK"
+- assertVisible: "Save student"
+- tapOn: "Cancel"
+- assertNotVisible: ".*Phone Check.*"

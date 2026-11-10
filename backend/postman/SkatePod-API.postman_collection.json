@@ -211,7 +211,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"  Mai  \",\n  \"disciplines\": [\n    {\n      \"discipline\": \"PATTERN_DANCE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Bronze\"\n    },\n    {\n      \"discipline\": \"ADULT_FREESKATE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Adult Bronze\"\n    }\n  ]\n}",
+              "raw": "{\n  \"name\": \"  Mai  \",\n  \"phone\": \" (555) 010-4477 \",\n  \"disciplines\": [\n    {\n      \"discipline\": \"PATTERN_DANCE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Bronze\"\n    },\n    {\n      \"discipline\": \"ADULT_FREESKATE\",\n      \"track\": \"ADULT\",\n      \"level\": \"Adult Bronze\"\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -229,6 +229,7 @@
                   "const body = pm.response.json();",
                   "pm.collectionVariables.set('studentId', body.id);",
                   "pm.test(\"Name is trimmed\", () => { pm.expect(body.name).to.eql('Mai'); });",
+                  "pm.test(\"Phone is trimmed\", () => { pm.expect(body.phone).to.eql('(555) 010-4477'); });",
                   "pm.test(\"Disciplines come back in catalog order\", () => { pm.expect(body.disciplines.map(d => d.discipline)).to.eql(['ADULT_FREESKATE', 'PATTERN_DANCE']); });",
                   "pm.test(\"Track is ADULT\", () => { body.disciplines.forEach(d => pm.expect(d.track).to.eql('ADULT')); });",
                   "pm.test(\"No lessons yet, so no next lesson\", () => { pm.expect(body.nextLesson).to.be.null; });"
@@ -267,7 +268,8 @@
                   "pm.test(\"Status is 200\", () => pm.response.to.have.status(200));",
                   "const body = pm.response.json();",
                   "pm.test(\"The new list replaced the old one\", () => { pm.expect(body.disciplines).to.have.length(1); pm.expect(body.disciplines[0].discipline).to.eql('STANDARD_FREESKATE'); });",
-                  "pm.test(\"Track is now EXCEL\", () => { pm.expect(body.disciplines[0].track).to.eql('EXCEL'); });"
+                  "pm.test(\"Track is now EXCEL\", () => { pm.expect(body.disciplines[0].track).to.eql('EXCEL'); });",
+                  "pm.test(\"Leaving the phone out clears it\", () => { pm.expect(body.phone).to.be.null; });"
                 ]
               }
             }
@@ -293,6 +295,72 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Phone with too few digits → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"phone\": \"555-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 400\", () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Phone with letters → 400",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/students",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mai\",\n  \"phone\": \"555-CALL\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
