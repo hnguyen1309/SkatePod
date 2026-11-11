@@ -17,8 +17,8 @@ import {
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { disciplineInfo, sortDisciplines, type StudentDiscipline, type Tone } from "../data";
-import { categoryColors, colors, radius, shadow } from "../theme";
+import { LESSON_TYPES, colorForType, disciplineInfo, sortDisciplines, type StudentDiscipline, type Tone } from "../data";
+import { categoryColors, colors, lessonColors, radius, shadow } from "../theme";
 import { Icon, type IconName } from "./Icon";
 
 export function Screen({
@@ -252,6 +252,121 @@ export function PickerField<T extends string>({
 }
 
 /**
+ * The round tick box at the start of a lesson row: empty until tapped, then teal with a check.
+ * The circle is 24 points, and hitSlop makes the tappable area about 44, Apple's comfortable minimum.
+ */
+export function TickCircle({ ticked, onPress, label }: { ticked: boolean; onPress: () => void; label: string }) {
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: ticked }}
+      hitSlop={10}
+      onPress={onPress}
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        borderWidth: 2,
+        borderColor: ticked ? colors.teal : colors.border,
+        backgroundColor: ticked ? colors.teal : colors.white,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {ticked ? <Icon color={colors.white} name="check" size={13} /> : null}
+    </Pressable>
+  );
+}
+
+/**
+ * Shows up above a list once at least one row is ticked: a "Select all" tick box (ticked when every row
+ * is, empty otherwise), how many are ticked, and "Clear" to untick everything.
+ */
+export function SelectAllBar({ count, total, onSelectAll, onClear }: { count: number; total: number; onSelectAll: () => void; onClear: () => void }) {
+  const all = count === total;
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 44, marginBottom: 8 }}>
+      {/* Empty until every row is ticked, then a check (no dash for "some"). */}
+      <TickCircle label="Select all" onPress={all ? onClear : onSelectAll} ticked={all} />
+      <Pressable accessibilityElementsHidden importantForAccessibility="no" onPress={all ? onClear : onSelectAll} style={{ flex: 1 }}>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>Select all</Text>
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{count} of {total} selected</Text>
+      </Pressable>
+      <Button label="Clear" onPress={onClear} variant="link" />
+    </View>
+  );
+}
+
+/**
+ * The bar pinned to the bottom while lesson rows are ticked: Select all / Clear on top, then the action
+ * buttons (`children`, e.g. Share and Text) in a row. It sits outside the scrolling list, so it stays put
+ * while the notes scroll. In a Sheet, pass it as the `footer` (the sheet already draws the frame);
+ * on a tab screen, use `framed` to get the same top border, background and padding.
+ */
+export function SelectionFooter({
+  count,
+  total,
+  onSelectAll,
+  onClear,
+  framed,
+  children,
+}: {
+  count: number;
+  total: number;
+  onSelectAll: () => void;
+  onClear: () => void;
+  framed?: boolean;
+  children: ReactNode;
+}) {
+  // `flex: 1` here only sets the width (the footer around it is a row). Its height comes from what's
+  // inside: a flex: 1 box inside a column would shrink to the smallest height and hide the buttons.
+  const content = (
+    <View style={{ flex: 1 }}>
+      <SelectAllBar count={count} onClear={onClear} onSelectAll={onSelectAll} total={total} />
+      <View style={{ flexDirection: "row", gap: 10 }}>{children}</View>
+    </View>
+  );
+  return framed ? <View style={[styles.sheetFooter, styles.pinnedBar]}>{content}</View> : content;
+}
+
+/**
+ * The lesson type buttons (Public, Freestyle, Off-ice), in the same colors as the lesson cards on the
+ * calendar (colorForType + lessonColors), so the coach learns which color means which type.
+ * Each button has a colored dot; the picked one fills with its color.
+ */
+export function LessonTypePicker({ value, onChange }: { value: string; onChange: (type: string) => void }) {
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Label>Lesson type</Label>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        {LESSON_TYPES.map((type) => {
+          const active = type === value;
+          const tone = lessonColors[colorForType(type)];
+          return (
+            <Pressable
+              accessibilityLabel={type}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={type}
+              onPress={() => onChange(type)}
+              style={[
+                styles.chip,
+                { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
+                active && { backgroundColor: tone.bg, borderColor: tone.border, borderWidth: 1.5 },
+              ]}
+            >
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tone.dot }} />
+              <Text style={[styles.chipText, active && { color: tone.text, fontWeight: "700" }]}>{type}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/**
  * A field that opens its list of options right below it. Only listed options can be picked,
  * so there's nothing to mistype. The list opens inline (not as a pop-up) because forms are
  * already inside a Sheet, and iOS can't show a second pop-up on top of it.
@@ -427,10 +542,14 @@ export function Sheet({
   children,
   footer,
   top,
+  hideHeader,
   pushed = null,
 }: {
   visible: boolean;
   title: string;
+  // No title row: `top` goes right to the top of the sheet and must bring its own Close button
+  // (e.g. the student profile, whose navy card already shows the name).
+  hideHeader?: boolean;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
@@ -446,7 +565,7 @@ export function Sheet({
         {/* While a page is pushed on top, hide this one from screen readers (and Maestro) so they only see the top page. */}
         <View accessibilityElementsHidden={Boolean(pushed)} importantForAccessibility={pushed ? "no-hide-descendants" : "auto"} style={{ flex: 1 }}>
           <SheetFrame>
-            <SheetPage footer={footer} onClose={onClose} title={title} top={top}>
+            <SheetPage footer={footer} hideHeader={hideHeader} onClose={onClose} title={title} top={top}>
               {children}
             </SheetPage>
           </SheetFrame>
@@ -476,10 +595,12 @@ export function SheetPage({
   children,
   footer,
   top,
+  hideHeader,
 }: {
   title: string;
   onClose: () => void;
   top?: ReactNode;
+  hideHeader?: boolean; // see Sheet
   // With onBack, the header shows a back arrow instead of the X (for a page pushed inside a sheet).
   onBack?: () => void;
   children: ReactNode;
@@ -488,6 +609,7 @@ export function SheetPage({
 }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.white }}>
+      {hideHeader ? null : (
       <View style={styles.sheetHeader}>
         {onBack ? (
           <View style={{ marginRight: 10 }}>
@@ -497,6 +619,7 @@ export function SheetPage({
         <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text, flex: 1 }}>{title}</Text>
         {onBack ? null : <IconButton icon="close" label="Close" onPress={onClose} />}
       </View>
+      )}
       {top ? <View style={{ paddingHorizontal: 20, paddingTop: 20 }}>{top}</View> : null}
       <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
         {children}
@@ -596,4 +719,6 @@ export const styles = StyleSheet.create({
     borderBottomColor: "#e8edf1",
   },
   sheetFooter: { flexDirection: "row", gap: 10, padding: 16, borderTopWidth: 1, borderTopColor: colors.borderSoft },
+  // A footer under a tab screen's scrolling content (white, with a soft shadow so the list slides under it).
+  pinnedBar: { backgroundColor: colors.white, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: -2 } },
 });

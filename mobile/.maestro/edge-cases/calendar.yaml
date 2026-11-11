@@ -1,4 +1,4 @@
-# Calendar edge cases: a lesson running past the calendar's hours, cancelling a new lesson, cancelling a
+# Calendar edge cases: the "After X lessons" count stops at 1, cancelling a new lesson, cancelling a
 # delete, and availability blocks with the same times on different days (allowed: only the same day
 # overlaps). Runs without the backend, from the sample data.
 appId: host.exp.Exponent
@@ -8,19 +8,21 @@ tags: [edge-case]
 - runFlow: ../subflows/start.yaml
 - tapOn: "Calendar"
 
-# 1. Too long: 9:00 AM + 900 minutes ends after 10 PM, outside the calendar's 6 AM–10 PM. Refused.
+# 1. Limits: "After X lessons" can't go below 1 lesson, and "Specific date" shows its "Ends on" date right under it.
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
-- tapOn:
-    text: "Duration \\(minutes\\)"
-    index: 1
-- eraseText: 5
-- inputText: "900"
-- tapOn:
-    text: "Schedule lesson"
-    index: 1
-- assertVisible: "Outside calendar hours"
-- tapOn: "OK"
+- scrollUntilVisible:
+    element: "Repeat weekly"
+- tapOn: "Repeat weekly"
+- tapOn: "After X lessons"
+- repeat:
+    times: 10
+    commands:
+      - tapOn: "Fewer lessons"
+- assertVisible: ".*\\(1 lesson\\)\\."
+- tapOn: "Specific date"
+- assertVisible: "Ends on.*"
+- assertNotVisible: "Fewer lessons"
 
 # 2. Cancel: the editor closes and no lesson is added.
 - tapOn: "Cancel"

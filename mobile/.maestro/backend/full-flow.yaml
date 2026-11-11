@@ -76,29 +76,17 @@ env:
     element: ".*${STUDENT}.*"
 - assertVisible: ".*${STUDENT}.*Not scheduled.*"   # no lessons yet
 
-# 5. Calendar: book them a weekly Sunday lesson (POST /api/lessons; the backend checks double booking).
+# 5. Calendar: book them a lesson today at the default 9:00 AM (POST /api/lessons; the backend checks double booking).
 - tapOn: "Calendar"
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
-# Student and day are rows of chips that run off the right edge (like 04-calendar-lessons.yaml).
-# Students are A to Z (like the backend's list, even right after adding one), so the student is usually in
-# view; if not, swipe the student row (21% down) until it is.
-- repeat:
-    times: 4
-    while:
-      notVisible: ${STUDENT}
-    commands:
-      - swipe:
-          start: 90%, 21%
-          end: 50%, 21%
-          duration: 600
+# Student is a dropdown: open it and pick the student (A to Z; scroll if the list is long).
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
+- scrollUntilVisible:
+    element: ${STUDENT}
 - tapOn: ${STUDENT}
-# Sunday is the last day chip: one long swipe of the day row (29% down) brings it into view.
-- swipe:
-    start: 92%, 29%
-    end: 5%, 29%
-    duration: 600
-- tapOn: "SUN"
 - tapOn:
     text: "Schedule lesson"
     index: 1                # the button (index 0 is the sheet's title)
@@ -126,12 +114,13 @@ env:
       - tapOn:
           point: 60%, 80%
 - assertVisible: "Every Thursday at .*"
-- tapOn: ${STUDENT}          # the student chip
 - tapOn:
-    text: "Duration \\(minutes\\)"
-    index: 1
-- eraseText: 5
-- inputText: "30"            # digits only, on the number pad (it has no Return key, so tap on)
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
+- scrollUntilVisible:
+    element: ${STUDENT}
+- tapOn: ${STUDENT}
+- tapOn: "30 min"            # the length buttons: 30, 45, 60 min
 - tapOn:
     text: "Schedule lesson"
     index: 1
@@ -179,7 +168,12 @@ env:
 - tapOn: "Lessons"
 - tapOn: "Add a past lesson"
 - assertVisible: "Add past lesson"
-- tapOn: ${STUDENT}        # a student chip (A to Z, so near the start of the row)
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
+- scrollUntilVisible:
+    element: ${STUDENT}
+- tapOn: ${STUDENT}
 - tapOn: "Skills, program sections, or goals covered..."
 - inputText: "Flow edges and crossovers"
 - pressKey: Enter          # closes the keyboard (hideKeyboard doesn't work with React Native text boxes on iOS)

@@ -1,5 +1,5 @@
 # Students: filter, add (with the name check), add a discipline and level, edit (pencil on the profile card),
-# delete, and the profile's note cards with the "Go to notes center" link.
+# delete, the profile's note cards with the "Go to notes center" link, and the Next lesson section's "Go to Calendar" link and "Schedule a lesson" button.
 appId: host.exp.Exponent
 name: Students add, edit, delete
 tags: [regression]
@@ -89,14 +89,36 @@ tags: [regression]
 - assertVisible: "Save note"
 - tapOn: "Back"
 - assertVisible: "Go to notes center"
-# Select mode: tick a card to share it (Share opens the iOS share sheet, so the flow stops before it;
-# the Text button never shows on the Simulator, which can't send texts).
-- tapOn: "Select"
-- assertVisible: "0 selected"
-- tapOn: ".*Public · 45 minutes.*"
-- assertVisible: "1 selected"
-- tapOn: "Cancel"
+# Tick a card's circle: Select all and Share appear in the bar pinned to the bottom (Share opens the iOS share sheet, so the flow stops
+# before it; the Text button never shows on the Simulator, which can't send texts). Select all, then Clear.
+- assertNotVisible: "Select all"
+- tapOn: "Select Public · 45 minutes.*"
+- assertVisible: "1 of \\d+ selected"
+- assertVisible: "Share"
+- tapOn: "Select all"
+- assertNotVisible: "1 of \\d+ selected"   # every card is ticked now
+- tapOn: "Clear"
+- assertNotVisible: "Select all"
 - assertVisible: "Go to notes center"
 - tapOn: "Go to notes center"
 - assertVisible: "Filter by student name..."
 - assertVisible: ".*Lily Kim.*"
+
+# The profile's Next lesson section: "Schedule a lesson" opens the Calendar's lesson editor (Lily picked),
+# and "Go to Calendar" shows her next lesson's week with its preview open.
+- tapOn: "Students"
+- scrollUntilVisible:
+    element: ".*Lily Kim.*"
+- tapOn: ".*Lily Kim.*"
+- assertVisible: "Go to Calendar"
+- tapOn: "Schedule a lesson"
+- assertVisible: "Schedule lesson"
+- tapOn: "Cancel"
+- tapOn: "Students"
+- scrollUntilVisible:
+    element: ".*Lily Kim.*"
+- tapOn: ".*Lily Kim.*"
+- tapOn: "Go to Calendar"
+- assertVisible: "Close preview"
+- assertVisible: "Lily Kim"
+- tapOn: "Close preview"

@@ -24,12 +24,10 @@ tags: [regression]
 # (turning the date wheel isn't scripted yet).
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
-# The student chips run off the right edge, so swipe the row to reach Amelia.
-# (Long swipes by screen position; a short swipe on a chip counts as a tap.)
-- swipe:
-    start: 92%, 21%
-    end: 5%, 21%
-    duration: 600
+# Student is a dropdown: open it, then pick Amelia from the list.
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
 - tapOn: "Amelia Park"
 - tapOn:
     text: "Off-ice"
@@ -43,6 +41,9 @@ tags: [regression]
 - assertVisible: "Every Sunday at 9:00 AM.*"
 - tapOn: "After X lessons"
 - assertVisible: ".*\\(10 lessons\\).*"
+# The stepper under the option changes the count; the summary above the buttons follows straight away.
+- tapOn: "More lessons"
+- assertVisible: ".*\\(11 lessons\\).*"
 - tapOn: "No end date"
 - tapOn:
     text: "Schedule lesson"
@@ -73,30 +74,22 @@ tags: [regression]
 - tapOn: "Close preview"
 
 # Double booking: Lily can't take the same Sunday 9:00 AM slot.
+# (Same date and default start as Amelia's lesson.)
 - tapOn: "Add lesson"
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
 - tapOn: "Lily Kim"
-- swipe:
-    start: 92%, 29%
-    end: 5%, 29%
-    duration: 600
-- tapOn: "SUN"
 - tapOn:
     text: "Schedule lesson"
     index: 1
 - assertVisible: "That time is taken"
 - tapOn: "OK"
 
-# A lesson shorter than 5 minutes is refused.
-- tapOn:
-    text: "Duration \\(minutes\\)"
-    index: 1
-- eraseText: 5
-- inputText: "2"
-- tapOn:
-    text: "Schedule lesson"
-    index: 1
-- assertVisible: "Check the times"
-- tapOn: "OK"
+# The end time can't be typed: it follows the start and the length (45 min by default, then 60 min).
+- assertVisible: "End time, 9:45 AM"
+- tapOn: "60 min"
+- assertVisible: "End time, 10:00 AM"
 - tapOn: "Cancel"
 
 # Delete from the preview asks first.

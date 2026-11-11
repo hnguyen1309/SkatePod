@@ -1330,6 +1330,40 @@ export function countWeeklyLessons(firstDate: string, endDate: string) {
   return days < 0 ? 0 : Math.floor(days / 7) + 1;
 }
 
+/** "2026-11-12" → "Thu, Nov 12" */
+export function formatDateKey(key: string) {
+  return fromDateKey(key).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** The lesson lengths the lesson editor offers as buttons (same as the Settings default lesson length). */
+export const LESSON_DURATIONS = [30, 45, 60];
+
+/**
+ * The length buttons for one lesson: 30, 45 and 60 minutes, plus the lesson's own length when it's
+ * something else (a lesson stretched to 75 minutes on the calendar keeps a "75 min" button).
+ */
+export function durationChoices(current: number) {
+  return LESSON_DURATIONS.includes(current) || !(current > 0) ? LESSON_DURATIONS : [...LESSON_DURATIONS, current].sort((a, b) => a - b);
+}
+
+/** How many lessons "After X lessons" allows: at least 1, at most a year of weekly lessons. */
+export const MIN_LESSON_COUNT = 1;
+export const MAX_LESSON_COUNT = 52;
+
+/**
+ * The sentence above the lesson editor's buttons that says what will be booked, e.g.
+ * "Every Tuesday at 8:00 AM, starting Tue, Nov 10." or "One lesson on Tue, Nov 10 at 8:00 AM."
+ * `endDate` is the last lesson's day when a repeating lesson stops (none = no end date).
+ */
+export function lessonSummary({ isRepeating, date, start, endDate }: { isRepeating: boolean; date: string; start: number; endDate?: string }) {
+  if (!isRepeating) return `One lesson on ${formatDateKey(date)} at ${formatTime(start)}.`;
+  const weekly = `Every ${FULL_WEEKDAYS[weekdayOfKey(date)]} at ${formatTime(start)}, starting ${formatDateKey(date)}`;
+  if (!endDate) return `${weekly}.`;
+  const count = countWeeklyLessons(date, endDate);
+  if (count === 0) return "No lessons fall between these dates. Move the end date later.";
+  return `${weekly} until ${formatDateKey(endDate)} (${count} ${count === 1 ? "lesson" : "lessons"}).`;
+}
+
 /**
  * Moving a lesson to another weekday. A one-time lesson moves to that weekday in the same week, so it
  * doesn't fall outside its own dates and vanish. A repeating lesson keeps its dates.

@@ -17,6 +17,9 @@ tags: [edge-case]
 
 # 2. Cancelling a delete keeps the note: save one, open it, Delete, then Cancel.
 - tapOn: "Add a past lesson"
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
 - tapOn: "Sofia Chen"
 - scrollUntilVisible:
     element: "Skills, program sections, or goals covered..."
@@ -47,17 +50,23 @@ tags: [edge-case]
 - pressKey: Enter
 - assertVisible: ".*EDGE spirals.*"
 
-# 4. Select mode: picking a lesson and leaving without Delete keeps it.
-- tapOn: "Select"
-- assertVisible: "0 selected"
-- tapOn: ".*EDGE spirals.*"
-- assertVisible: "1 selected"
-- tapOn: "Cancel"
+# 4. Tick boxes: Select all only shows once a row is ticked; Select all then Clear unticks everything and keeps the lesson.
+- assertNotVisible: "Select all"
+- tapOn:
+    text: "Select .*"
+    leftOf: ".*EDGE spirals.*"
+- assertVisible: "Select all"
+- assertVisible: "1 of \\d+ selected"
+- tapOn: "Select all"
+- assertNotVisible: "1 of \\d+ selected"
+- tapOn: "Clear"
+- assertNotVisible: "Select all"
 - assertVisible: ".*EDGE spirals.*"
 
-# 5. Clean up: delete the note made here (Select mode, confirm).
-- tapOn: "Select"
-- tapOn: ".*EDGE spirals.*"
+# 5. Clean up: delete the note made here (tick it, Delete, confirm).
+- tapOn:
+    text: "Select .*"
+    leftOf: ".*EDGE spirals.*"
 - tapOn:
     text: "Delete"
     index: 0

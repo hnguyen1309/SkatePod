@@ -43,6 +43,7 @@ The note's switch says "This note will appear in their read-only progress link",
 Change the coach name, then tap Home: the change is gone with no warning. The Save button is at the bottom, below the fold. Programs saves as you type, so the two screens behave differently.
 
 ### 8. Duration number pad has no way to close it (SKATE-89)
+**Fixed (Nov 2026):** the Duration box is gone; the lesson editor now has 30/45/60 min buttons and shows the end time read-only.
 Calendar → lesson editor → Duration (minutes) opens a number pad with no Return or Done key. You have to tap somewhere else to close it. Also, clearing the box or typing 0 keeps the old duration silently (the box shows blank but the lesson saves with the previous length).
 
 ### 9. VoiceOver reads whole cards as one long label (SKATE-90)

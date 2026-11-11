@@ -46,6 +46,8 @@ import {
   MAX_HOUR_HEIGHT,
   addDaysToKey,
   countWeeklyLessons,
+  durationChoices,
+  lessonSummary,
   endDateAfterLessons,
   isOneTimeLesson,
   moveToWeekday,
@@ -866,5 +868,27 @@ describe("coach profile (Settings)", () => {
     assert.equal(coachProfileProblem({ ...saved, phone: "+1 (555) 010-9000" }), null);
     assert.match(coachProfileProblem({ ...saved, phone: "555-CALL" }) ?? "", /^Phone number: .*digits only/);
     assert.match(coachProfileProblem({ ...saved, email: "mia" }) ?? "", /email/);
+  });
+});
+
+describe("lesson editor: lengths and summary", () => {
+  test("30, 45 and 60 minutes, plus the lesson's own length when it's different", () => {
+    assert.deepEqual(durationChoices(45), [30, 45, 60]);
+    assert.deepEqual(durationChoices(75), [30, 45, 60, 75]);
+    assert.deepEqual(durationChoices(20), [20, 30, 45, 60]);
+  });
+
+  test("one-time and weekly summaries (2026-11-10 is a Tuesday)", () => {
+    assert.equal(lessonSummary({ isRepeating: false, date: "2026-11-10", start: 480 }), "One lesson on Tue, Nov 10 at 8:00 AM.");
+    assert.equal(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480 }), "Every Tuesday at 8:00 AM, starting Tue, Nov 10.");
+    assert.equal(
+      lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-12-01" }),
+      "Every Tuesday at 8:00 AM, starting Tue, Nov 10 until Tue, Dec 1 (4 lessons).",
+    );
+    assert.equal(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-11-10" }).endsWith("(1 lesson)."), true);
+  });
+
+  test("an end date before the start says so", () => {
+    assert.match(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-11-01" }), /^No lessons fall/);
   });
 });

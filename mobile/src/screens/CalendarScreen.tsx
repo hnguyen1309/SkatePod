@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { Alert, Animated, LayoutAnimation, PanResponder, Pressable, ScrollView, Switch, Text, View, useWindowDimensions, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { Alert, Animated, LayoutAnimation, PanResponder, Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions, type GestureResponderEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Icon } from "../components/Icon";
-import { Button, Card, Chips, Field, Heading, IconButton, Label, PickerField, Screen, Segmented, Sheet } from "../components/ui";
+import { Button, Card, Dropdown, Field, Heading, IconButton, Label, LessonTypePicker, PickerField, Screen, Segmented, Sheet } from "../components/ui";
 import {
   DEFAULT_HOUR_HEIGHT,
   FIRST_HOUR,
@@ -14,7 +14,12 @@ import {
   addDaysToKey,
   calendarScale,
   countWeeklyLessons,
+  durationChoices,
   endDateAfterLessons,
+  formatDateKey,
+  lessonSummary,
+  MAX_LESSON_COUNT,
+  MIN_LESSON_COUNT,
   isOneTimeLesson,
   moveToWeekday,
   nextDateOnWeekday,
@@ -80,6 +85,8 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [selectedDay, setSelectedDay] = useState(todayIndex());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  // The student to pick in a new lesson, when the editor was opened from their profile ("Schedule a lesson").
+  const [addFor, setAddFor] = useState<string | null>(null);
   // The lesson whose detail window is open (tap a lesson to open it), and the lesson being edited.
   const [detailId, setDetailIdState] = useState<string | null>(rememberedPreviewId);
   const setDetailId = (id: string | null) => {
@@ -269,7 +276,19 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 
   useEffect(() => {
     if (!intent) return;
-    if (intent.kind === "add") setEditorOpen(true);
+    if (intent.kind === "add") {
+      setAddFor(intent.studentId ?? null);
+      setEditorOpen(true);
+    }
+    if (intent.kind === "showLesson") {
+      const lesson = lessons.find((item) => item.id === intent.lessonId);
+      if (lesson) {
+        showWeekOf(lesson);
+        setSelectedDay(lesson.day);
+        setSelectedId(lesson.id);
+        setDetailId(lesson.id);
+      }
+    }
     onIntentHandled();
   }, [intent, onIntentHandled]);
 
@@ -632,10 +651,12 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
           // Tapping a day in this or a later week starts the lesson that week; earlier weeks start today.
           defaultStartDate={tapped && toDateKey(dates[tapped.day].date) > toDateKey(new Date()) ? toDateKey(dates[tapped.day].date) : undefined}
           defaultDuration={settings.lessonLength}
+          defaultStudentId={addFor ?? undefined}
           lessons={lessons}
           onClose={() => {
             setEditorOpen(false);
             setTapped(null);
+            setAddFor(null);
           }}
           onSave={async (lesson) => {
             const saved = await storeLesson(lesson);
@@ -644,6 +665,7 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
             setSelectedId(saved.id); // the backend gives a new lesson its own id
             setEditorOpen(false);
             setTapped(null);
+            setAddFor(null);
           }}
           students={students.map((student) => ({ id: student.id, name: student.name }))}
         />
@@ -685,9 +707,18 @@ export function CalendarScreen({ intent, onIntentHandled, navigate }: ScreenProp
 }
 
 // How a repeating lesson stops: never, on a date, or after a number of lessons.
-const RECURRENCE_ENDS = ["No end date", "Specific date", "After X lessons"] as const;
-type RecurrenceEnd = (typeof RECURRENCE_ENDS)[number];
+// The id is what the code checks; the label is what the coach sees (and what the Maestro flows tap).
+const RECURRENCE_ENDS = [
+  { id: "none", label: "No end date" },
+  { id: "specific_date", label: "Specific date" },
+  { id: "after_x", label: "After X lessons" },
+] as const;
+type RecurrenceEnd = (typeof RECURRENCE_ENDS)[number]["id"];
 
+// The Schedule lesson / Edit lesson form. Top to bottom: student, start time (the end time is worked out
+// from the length, so the two can't disagree), length buttons, lesson type, date, Repeat switch and, only
+// while Repeat is on, how the repeating ends. The footer shows one sentence saying what will be booked,
+// right above Cancel and Schedule lesson, so the coach reads it last before saving.
 function LessonEditor({
   students,
   lessons,
@@ -695,6 +726,7 @@ function LessonEditor({
   defaultStart = 9 * 60,
   defaultStartDate,
   defaultDuration,
+  defaultStudentId,
   initial,
   onClose,
   onSave,
@@ -705,21 +737,21 @@ function LessonEditor({
   defaultStart?: number; // minutes after midnight; 9:00 AM when you use the Add button
   defaultStartDate?: string; // "2026-11-12": the day tapped on the calendar (today when using Add)
   defaultDuration: number;
+  defaultStudentId?: string; // the student picked at first (from their profile's "Schedule a lesson")
   initial?: Lesson; // set when editing an existing lesson; the form starts with its values
   onClose: () => void;
   onSave: (lesson: Lesson) => void | Promise<void>; // may wait for the backend
 }) {
   const studentIds = students.map((student) => student.id);
-  const [studentId, setStudentId] = useState(initial?.studentId ?? studentIds[0] ?? "");
-  // Start, end and duration stay in sync: change the start and the end moves with it (same length);
-  // change the end or the duration and the other one updates.
-  const [start, setStart] = useState(initial?.start ?? defaultStart);
-  const [duration, setDuration] = useState(defaultDuration);
-  const [durationText, setDurationText] = useState(String(defaultDuration));
+  const [studentId, setStudentId] = useState(
+    initial?.studentId ?? (defaultStudentId && studentIds.includes(defaultStudentId) ? defaultStudentId : studentIds[0]) ?? "",
+  );
+  const [startTime, setStartTime] = useState(initial?.start ?? defaultStart); // minutes after midnight
+  const [duration, setDuration] = useState(defaultDuration); // minutes
   const [type, setType] = useState(initial?.type ?? LESSON_TYPES[0]);
   // True while the backend is saving, so a second tap doesn't add the lesson twice.
   const [saving, setSaving] = useState(false);
-  const end = start + duration;
+
   // The date of the lesson (the first one, if it repeats). The weekday comes from the date, so there's
   // no separate Day picker. If the date we're handed isn't on the lesson's weekday (e.g. tapping
   // Tuesday in an earlier week starts it today), it moves to the next day on that weekday.
@@ -728,25 +760,30 @@ function LessonEditor({
   const [date, setDate] = useState(firstDate);
   const [dateChanged, setDateChanged] = useState(false);
   const day = weekdayOfKey(date);
+
   // New lessons happen once unless the coach turns on Repeat. (Stored the same way as weekly lessons,
   // just with the end date on the start date: see isOneTimeLesson in data.ts.)
   const wasRepeating = initial ? !isOneTimeLesson(initial) : false;
-  const [repeat, setRepeat] = useState(wasRepeating);
-  const [endMode, setEndMode] = useState<RecurrenceEnd>(wasRepeating && initial?.endDate ? "Specific date" : "No end date");
+  const [isRepeating, setIsRepeating] = useState(wasRepeating);
+  const [recurrenceEndType, setRecurrenceEndType] = useState<RecurrenceEnd>(wasRepeating && initial?.endDate ? "specific_date" : "none");
   const [untilDate, setUntilDate] = useState(wasRepeating && initial?.endDate ? initial.endDate : addDaysToKey(firstDate, 7 * 7));
-  const [countText, setCountText] = useState(String(wasRepeating && initial?.endDate ? Math.max(1, countWeeklyLessons(firstDate, initial.endDate)) : 10));
-  const count = Number.parseInt(countText, 10);
+  const [lessonCount, setLessonCount] = useState(wasRepeating && initial?.endDate ? Math.max(1, countWeeklyLessons(firstDate, initial.endDate)) : 10);
+
+  // Worked out again only when the start or the length changes. Shown read-only next to the start time.
+  const endTime = useMemo(() => startTime + duration, [startTime, duration]);
+
   // What gets saved. Lessons saved before start dates existed have none ("already running"); they keep
   // it that way as long as they repeat and the coach doesn't touch the date.
-  const startDate = repeat && initial && !dateChanged ? initial.startDate : date;
-  const endDate = !repeat
+  const startDate = isRepeating && initial && !dateChanged ? initial.startDate : date;
+  const endDate = !isRepeating
     ? date
-    : endMode === "Specific date"
+    : recurrenceEndType === "specific_date"
       ? untilDate
-      : endMode === "After X lessons" && count > 0
-        ? endDateAfterLessons(date, count)
+      : recurrenceEndType === "after_x"
+        ? endDateAfterLessons(date, lessonCount)
         : undefined;
-  const lessonCount = endDate ? countWeeklyLessons(date, endDate) : Infinity;
+  // The sentence above the buttons; it changes as soon as anything above does.
+  const summary = lessonSummary({ isRepeating, date, start: startTime, endDate: isRepeating ? endDate : undefined });
 
   function changeDate(key: string) {
     setDate(key);
@@ -756,18 +793,14 @@ function LessonEditor({
   // The Recurrence ends card slides open under the switch instead of popping in.
   function toggleRepeat(on: boolean) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setRepeat(on);
+    setIsRepeating(on);
   }
 
-  function changeEndMode(mode: RecurrenceEnd) {
+  function changeEndType(next: RecurrenceEnd) {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setEndMode(mode);
+    setRecurrenceEndType(next);
   }
 
-  function changeDuration(minutes: number) {
-    setDuration(minutes);
-    setDurationText(String(minutes));
-  }
   const nameOf = (id: string) => students.find((student) => student.id === id)?.name ?? id;
 
   async function submit() {
@@ -776,11 +809,7 @@ function LessonEditor({
       Alert.alert("Add a student first", "Lessons need a student. Add one on the Students tab.");
       return;
     }
-    if (duration < 5) {
-      Alert.alert("Check the times", "The end time needs to be at least 5 minutes after the start.");
-      return;
-    }
-    const outside = calendarHoursProblem(start, end);
+    const outside = calendarHoursProblem(startTime, endTime);
     if (outside) {
       Alert.alert("Outside calendar hours", outside);
       return;
@@ -789,20 +818,27 @@ function LessonEditor({
       Alert.alert("Check the date", "A lesson can be scheduled for today at the earliest. To record a lesson that already happened, add a past lesson on the Lessons tab.");
       return;
     }
-    if (!repeat && wasRepeating && date < today) {
+    if (!isRepeating && wasRepeating && date < today) {
       Alert.alert("Pick a new date", "This lesson started in the past. To make it a one-time lesson, pick today or a later date.");
       return;
     }
-    if (repeat && endMode === "After X lessons" && !(count > 0)) {
-      Alert.alert("How many lessons?", "Enter how many lessons to schedule, 1 or more.");
-      return;
-    }
-    if (repeat && endMode === "Specific date" && untilDate < date) {
+    if (isRepeating && recurrenceEndType === "specific_date" && untilDate < date) {
       Alert.alert("Check the end date", "The recurrence needs to end on or after the lesson date.");
       return;
     }
     // Editing keeps the same id, so findClash doesn't count the lesson as clashing with itself.
-    const lesson: Lesson = { id: initial?.id ?? newId(), studentId, day, start, type, duration, color: colorForType(type), createdAt: initial?.createdAt ?? new Date().toISOString(), startDate, endDate };
+    const lesson: Lesson = {
+      id: initial?.id ?? newId(),
+      studentId,
+      day,
+      start: startTime,
+      type,
+      duration,
+      color: colorForType(type),
+      createdAt: initial?.createdAt ?? new Date().toISOString(),
+      startDate,
+      endDate,
+    };
     // Block double booking: you can only coach one lesson at a time.
     const clash = findClash(lesson, lessons);
     if (clash) {
@@ -823,38 +859,50 @@ function LessonEditor({
   return (
     <Sheet
       footer={
-        <>
-          <Button label="Cancel" onPress={onClose} style={{ flex: 1 }} variant="secondary" />
-          <Button disabled={saving} label={initial ? "Save changes" : "Schedule lesson"} onPress={submit} style={{ flex: 1.5 }} />
-        </>
+        // The footer is a row by default; this column puts the summary on top and the two buttons under it.
+        <View style={editorStyles.footer}>
+          <Text accessibilityLiveRegion="polite" style={editorStyles.summary}>
+            {summary}
+          </Text>
+          <View style={editorStyles.footerButtons}>
+            <Button label="Cancel" onPress={onClose} style={{ flex: 1 }} variant="secondary" />
+            <Button disabled={saving} label={initial ? "Save changes" : "Schedule lesson"} onPress={submit} style={{ flex: 1.5 }} />
+          </View>
+        </View>
       }
       onClose={onClose}
       title={initial ? "Edit lesson" : "Schedule lesson"}
       visible
     >
       {studentIds.length ? (
-        <PickerField label="Student" onChange={setStudentId} options={studentIds} renderLabel={nameOf} value={studentId} />
+        <Dropdown label="Student" onChange={setStudentId} options={studentIds} renderLabel={nameOf} value={studentId} />
       ) : (
         <Text style={{ color: colors.muted, marginBottom: 16 }}>You don’t have any students yet.</Text>
       )}
-      <TimeRange
-        end={end}
-        onChangeEnd={(minutes) => changeDuration(Math.max(0, minutes - start))}
-        onChangeStart={setStart}
-        start={start}
-      />
-      <Field
-        keyboardType="number-pad"
-        label="Duration (minutes)"
-        onChangeText={(text) => {
-          setDurationText(text);
-          const minutes = Number.parseInt(text, 10);
-          if (minutes > 0) setDuration(minutes); // the end time follows as you type
-        }}
-        value={durationText}
-      />
-      <PickerField label="Lesson type" onChange={setType} options={LESSON_TYPES} value={type} />
-      {/* Row A: the date. Row B: the Repeat switch. Row C: how the repeating ends, only while Repeat is on. */}
+
+      <StartAndEnd end={endTime} onChangeStart={setStartTime} start={startTime} />
+
+      <Label>Length</Label>
+      <View style={editorStyles.pillRow}>
+        {durationChoices(duration).map((minutes) => {
+          const active = minutes === duration;
+          return (
+            <Pressable
+              accessibilityLabel={`${minutes} min`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              key={minutes}
+              onPress={() => setDuration(minutes)}
+              style={[editorStyles.pill, active && editorStyles.pillActive]}
+            >
+              <Text style={[editorStyles.pillText, active && editorStyles.pillTextActive]}>{minutes} min</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <LessonTypePicker onChange={setType} value={type} />
+
       <DateField
         emptyLabel="Pick a date"
         label="Date"
@@ -862,58 +910,211 @@ function LessonEditor({
         onChange={changeDate}
         value={date}
       />
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: -4, marginBottom: 12 }}>
+
+      <View style={editorStyles.repeatRow}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>Repeat</Text>
-          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{repeat ? `Every ${FULL_WEEKDAYS[day]}` : "Just this once"}</Text>
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 2 }}>{isRepeating ? `Every ${FULL_WEEKDAYS[day]}` : "Just this once"}</Text>
         </View>
         <Switch
           accessibilityLabel="Repeat weekly"
           ios_backgroundColor={colors.border}
           onValueChange={toggleRepeat}
           trackColor={{ false: colors.border, true: colors.teal }}
-          value={repeat}
+          value={isRepeating}
         />
       </View>
-      {repeat ? (
-        <View
-          style={{
-            borderWidth: 1,
-            borderColor: colors.border,
-            borderRadius: radius.md,
-            backgroundColor: colors.bg,
-            padding: 12,
-            paddingBottom: endMode === "No end date" ? 12 : 0,
-            marginBottom: 12,
-            overflow: "hidden",
-          }}
-        >
+
+      {/* Everything about repeating lives in this one card, and only while Repeat is on. */}
+      {isRepeating ? (
+        <View style={editorStyles.recurrenceCard}>
           <Label>Recurrence ends</Label>
-          <Chips onChange={changeEndMode} options={RECURRENCE_ENDS} value={endMode} />
-          {endMode === "Specific date" ? (
-            <View style={{ marginTop: 12 }}>
-              <DateField emptyLabel="Pick a date" label="Ends on" minimum={date} onChange={setUntilDate} value={untilDate} />
-            </View>
-          ) : null}
-          {endMode === "After X lessons" ? (
-            <View style={{ marginTop: 12 }}>
-              <Field keyboardType="number-pad" label="Number of lessons" onChangeText={setCountText} value={countText} />
-            </View>
-          ) : null}
+          {/* Stacked full-width rows rather than a sideways row, so nothing gets cut off on a narrow phone.
+              The extra field for an option opens right under that option. */}
+          {RECURRENCE_ENDS.map((option) => {
+            const active = option.id === recurrenceEndType;
+            return (
+              <View key={option.id}>
+                <Pressable
+                  accessibilityLabel={option.label}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => changeEndType(option.id)}
+                  style={[editorStyles.option, active && editorStyles.optionActive]}
+                >
+                  <View style={[editorStyles.radio, active && editorStyles.radioActive]}>
+                    {active ? <View style={editorStyles.radioDot} /> : null}
+                  </View>
+                  <Text style={[editorStyles.optionText, active && { color: colors.navy, fontWeight: "700" }]}>{option.label}</Text>
+                </Pressable>
+                {active && option.id === "specific_date" ? (
+                  <View style={editorStyles.optionDetail}>
+                    <DateField emptyLabel="Pick a date" label="Ends on" minimum={date} onChange={setUntilDate} value={untilDate} />
+                  </View>
+                ) : null}
+                {active && option.id === "after_x" ? (
+                  <View style={editorStyles.optionDetail}>
+                    <Stepper
+                      label="Number of lessons"
+                      max={MAX_LESSON_COUNT}
+                      min={MIN_LESSON_COUNT}
+                      onChange={setLessonCount}
+                      value={lessonCount}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : null}
-      <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 16 }}>
-        {!repeat
-          ? `One lesson on ${formatDateKey(date)} at ${formatTime(start)}.`
-          : lessonCount === 0
-            ? "No lessons fall between these dates. Move the end date later."
-            : `Every ${FULL_WEEKDAYS[day]} at ${formatTime(start)}, starting ${formatDateKey(date)}${
-                endDate ? ` until ${formatDateKey(endDate)} (${lessonCount} ${lessonCount === 1 ? "lesson" : "lessons"})` : ""
-              }.`}
-      </Text>
     </Sheet>
   );
 }
+
+// The start time (tap to open the iOS time wheel under it) with the end time next to it. The end time
+// can't be tapped: it always equals start + length, so the two can never disagree.
+function StartAndEnd({ start, end, onChangeStart }: { start: number; end: number; onChangeStart: (minutes: number) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Label>Start time</Label>
+          <Pressable
+            accessibilityLabel={`Start time, ${formatTime(start)}`}
+            accessibilityRole="button"
+            onPress={() => setOpen((current) => !current)}
+            style={[editorStyles.timeBox, open && { borderColor: colors.teal }]}
+          >
+            <Text style={{ fontSize: 16, fontWeight: "600", color: open ? colors.tealDark : colors.text }}>{formatTime(start)}</Text>
+          </Pressable>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Label>End time</Label>
+          <View accessibilityLabel={`End time, ${formatTime(end)}`} accessible style={editorStyles.endBox}>
+            <Text style={{ fontSize: 16, fontWeight: "600", color: colors.muted }}>{formatTime(end)}</Text>
+          </View>
+        </View>
+      </View>
+      {open ? <TimeWheel minutes={start} onChange={onChangeStart} /> : null}
+    </View>
+  );
+}
+
+// [−] 10 [+]: a number the coach changes one step at a time, between min and max. No keyboard needed.
+function Stepper({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
+  const step = (by: number) => onChange(Math.min(max, Math.max(min, value + by)));
+  return (
+    <View>
+      <Label>{label}</Label>
+      <View style={editorStyles.stepper}>
+        <Pressable
+          accessibilityLabel="Fewer lessons"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value <= min }}
+          hitSlop={6}
+          onPress={() => step(-1)}
+          style={[editorStyles.stepButton, value <= min && { opacity: 0.35 }]}
+        >
+          <Text style={editorStyles.stepSign}>−</Text>
+        </Pressable>
+        <Text accessibilityLabel={`${value} ${value === 1 ? "lesson" : "lessons"}`} style={editorStyles.stepValue}>
+          {value}
+        </Text>
+        <Pressable
+          accessibilityLabel="More lessons"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: value >= max }}
+          hitSlop={6}
+          onPress={() => step(1)}
+          style={[editorStyles.stepButton, value >= max && { opacity: 0.35 }]}
+        >
+          <Text style={editorStyles.stepSign}>+</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// Styles for the lesson editor. Buttons are at least 44 points tall (Apple's smallest comfortable tap size).
+const editorStyles = StyleSheet.create({
+  footer: { flex: 1, gap: 10 },
+  footerButtons: { flexDirection: "row", gap: 10 },
+  summary: { fontSize: 13, lineHeight: 18, color: colors.body, fontWeight: "600" },
+  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  pill: {
+    minHeight: 44,
+    minWidth: 76,
+    flexGrow: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.input,
+    backgroundColor: colors.white,
+  },
+  pillActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+  pillText: { fontSize: 14, fontWeight: "600", color: colors.subtle },
+  pillTextActive: { color: colors.white },
+  timeBox: {
+    minHeight: 48,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    backgroundColor: colors.white,
+  },
+  endBox: {
+    minHeight: 48,
+    justifyContent: "center",
+    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    backgroundColor: colors.bg,
+  },
+  repeatRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44, marginTop: -4, marginBottom: 12 },
+  recurrenceCard: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
+    padding: 12,
+    gap: 8,
+    marginBottom: 16,
+  },
+  option: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  optionActive: { borderColor: colors.navy },
+  optionText: { flex: 1, fontSize: 15, fontWeight: "500", color: colors.body },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: colors.input, alignItems: "center", justifyContent: "center" },
+  radioActive: { borderColor: colors.navy },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.navy },
+  optionDetail: { paddingTop: 10, paddingHorizontal: 4 },
+  stepper: { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: 4, marginBottom: 4 },
+  stepButton: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.input,
+    backgroundColor: colors.white,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepSign: { fontSize: 22, fontWeight: "600", color: colors.navy },
+  stepValue: { minWidth: 56, textAlign: "center", fontSize: 18, fontWeight: "700", color: colors.text },
+});
 
 // The small panel along the bottom third of the screen that opens when you tap a lesson, like a
 // calendar app's event preview. The calendar stays visible and usable above it. It stays open while
@@ -1267,11 +1468,6 @@ function DateField({
       ) : null}
     </View>
   );
-}
-
-// "2026-11-12" → "Thu, Nov 12"
-function formatDateKey(key: string) {
-  return fromDateKey(key).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 function TimeWheel({ minutes, onChange }: { minutes: number; onChange: (minutes: number) => void }) {
