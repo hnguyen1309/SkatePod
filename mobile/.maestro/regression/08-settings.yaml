@@ -1,4 +1,4 @@
-# Settings: change the coach name and default lesson length, save, and see them used elsewhere.
+# Settings: change the coach name, phone number and default lesson length, save, and see them used elsewhere.
 appId: host.exp.Exponent
 name: Settings
 tags: [regression]
@@ -13,23 +13,39 @@ tags: [regression]
 - eraseText: 20
 - inputText: "Jordan Test"
 - pressKey: Enter
-- tapOn: "60 minutes"
 
-# The UI tests run without mobile/.env, so the Backend card says it isn't set up.
+# 1. The coach's phone number: a wrong one is refused, a right one saves with the rest.
+- tapOn:
+    text: "Phone number"
+    index: 1
+- eraseText: 30
+- inputText: "call me"
+- pressKey: Enter
+- tapOn: "60 minutes"
+- scrollUntilVisible:
+    element: "Save coach info"
+- tapOn: "Save coach info"
+- assertVisible: "Can't save yet"
+- tapOn: "OK"
+- tapOn:
+    text: "Phone number"
+    index: 1
+- eraseText: 30
+- inputText: "+1 555 010 7000"
+- pressKey: Enter
+- tapOn: "Save coach info"
+- assertVisible: "Coach info saved"
+
+# 2. The UI tests run without mobile/.env, so the Backend card says it isn't set up.
 - scrollUntilVisible:
     element: "Test connection"
 - assertVisible: ".*Not set up: everything is stored on this phone.*"
 
-- scrollUntilVisible:
-    element: "Save settings"
-- tapOn: "Save settings"
-- assertVisible: "Changes saved"
-
-# Home greets the new name.
+# 3. Home greets the new name.
 - tapOn: "Home"
 - assertVisible: "Good (morning|afternoon|evening), Jordan"
 
-# A new lesson starts with the new default length.
+# 4. A new lesson starts with the new default length.
 - tapOn: "Add lesson"
 - assertVisible: "Schedule lesson"
 - assertVisible: "60"

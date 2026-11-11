@@ -4,8 +4,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  smsLink,
+  shareNotesMessage,
   phoneLink,
   phoneProblem,
+  coachProfileHasChanges,
+  coachProfileOf,
+  coachProfileProblem,
   notesForStudent,
   DASHBOARD_UPCOMING,
   SAMPLE_LESSONS,
@@ -41,6 +46,8 @@ import {
   MAX_HOUR_HEIGHT,
   addDaysToKey,
   countWeeklyLessons,
+  durationChoices,
+  lessonSummary,
   endDateAfterLessons,
   isOneTimeLesson,
   moveToWeekday,
@@ -799,5 +806,89 @@ describe("student phone and the API", () => {
   test("studentFromApi keeps the phone and leaves it out when there is none", () => {
     assert.equal(studentFromApi({ id: "a", name: "Emma", phone: "555 0102", disciplines: [] }).phone, "555 0102");
     assert.equal("phone" in studentFromApi({ id: "a", name: "Emma", phone: null, disciplines: [] }), false);
+  });
+});
+
+describe("shareNotesMessage", () => {
+  const note = (id: string, date: string, changes: Partial<Note> = {}) =>
+    ({ id, studentId: "s2", date, title: "", lessonType: "Freestyle", duration: "60 minutes", overall: "", focus: "", observations: "", nextSteps: "", skills: [], shared: false, ...changes }) as Note;
+
+  test("greets the student by first name, lists the notes oldest first and signs off via SkatePod", () => {
+    const message = shareNotesMessage(
+      [note("b", "2026-11-06T14:00:00", { focus: "Axel", skills: ["Axel", "Loop"] }), note("a", "2026-11-02T14:00:00", { observations: "Strong edges.", nextSteps: "Spirals" })],
+      "Lily Kim",
+      "Mia Carter",
+    );
+    const parts = message.split("\n\n");
+    assert.equal(parts[0], "Hi Lily, here are your notes from our last 2 lessons:");
+    assert.match(parts[1], /Nov 2[\s\S]*Strong edges\.\nNext: Spirals/);
+    assert.match(parts[2], /Nov 6[\s\S]*Focus: Axel\nSkills: Axel, Loop/);
+    assert.equal(parts[3], "— Mia Carter, via SkatePod");
+  });
+
+  test("one lesson, an empty note and no coach name", () => {
+    const message = shareNotesMessage([note("a", "2026-11-02T14:00:00")], "LK", " ");
+    assert.match(message, /^Hi LK, here are your notes from our lesson:/);
+    assert.match(message, /No notes for this lesson\./);
+    assert.match(message, /— via SkatePod$/);
+  });
+});
+
+describe("smsLink", () => {
+  test("iPhone: number, then &body= with the message encoded", () => {
+    assert.equal(smsLink("(678) 910-9157", "Hi Lucas, notes & more", "ios"), "sms:6789109157&body=Hi%20Lucas%2C%20notes%20%26%20more");
+  });
+
+  test("Android: ?body= instead", () => {
+    assert.equal(smsLink("+1 678 910 9157", "Hi", "android"), "sms:+16789109157?body=Hi");
+  });
+
+  test("no number: the coach picks a contact", () => {
+    assert.equal(smsLink(undefined, "Hi", "ios"), "sms:&body=Hi");
+    assert.equal(smsLink("", "Hi", "android"), "sms:?body=Hi");
+  });
+});
+
+describe("coach profile (Settings)", () => {
+  const saved = coachProfileOf({ coachName: "Mia Carter", email: "mia@example.com", lessonLength: 45, reminders: true, sharedNotes: true });
+
+  test("settings saved before the phone number existed get an empty phone", () => {
+    assert.equal(saved.phone, "");
+  });
+
+  test("only real changes light up Save", () => {
+    assert.equal(coachProfileHasChanges(saved, { ...saved }), false);
+    assert.equal(coachProfileHasChanges(saved, { ...saved, coachName: " Mia Carter " }), false);
+    assert.equal(coachProfileHasChanges(saved, { ...saved, phone: "555 010 9000" }), true);
+    assert.equal(coachProfileHasChanges(saved, { ...saved, lessonLength: 60 }), true);
+  });
+
+  test("empty fields are fine, a bad phone or email is not", () => {
+    assert.equal(coachProfileProblem({ coachName: "", email: "", phone: "", lessonLength: 45 }), null);
+    assert.equal(coachProfileProblem({ ...saved, phone: "+1 (555) 010-9000" }), null);
+    assert.match(coachProfileProblem({ ...saved, phone: "555-CALL" }) ?? "", /^Phone number: .*digits only/);
+    assert.match(coachProfileProblem({ ...saved, email: "mia" }) ?? "", /email/);
+  });
+});
+
+describe("lesson editor: lengths and summary", () => {
+  test("30, 45 and 60 minutes, plus the lesson's own length when it's different", () => {
+    assert.deepEqual(durationChoices(45), [30, 45, 60]);
+    assert.deepEqual(durationChoices(75), [30, 45, 60, 75]);
+    assert.deepEqual(durationChoices(20), [20, 30, 45, 60]);
+  });
+
+  test("one-time and weekly summaries (2026-11-10 is a Tuesday)", () => {
+    assert.equal(lessonSummary({ isRepeating: false, date: "2026-11-10", start: 480 }), "One lesson on Tue, Nov 10 at 8:00 AM.");
+    assert.equal(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480 }), "Every Tuesday at 8:00 AM, starting Tue, Nov 10.");
+    assert.equal(
+      lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-12-01" }),
+      "Every Tuesday at 8:00 AM, starting Tue, Nov 10 until Tue, Dec 1 (4 lessons).",
+    );
+    assert.equal(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-11-10" }).endsWith("(1 lesson)."), true);
+  });
+
+  test("an end date before the start says so", () => {
+    assert.match(lessonSummary({ isRepeating: true, date: "2026-11-10", start: 480, endDate: "2026-11-01" }), /^No lessons fall/);
   });
 });

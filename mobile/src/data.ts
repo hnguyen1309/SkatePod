@@ -178,6 +178,7 @@ export type AvailabilityBlock = {
 export type Settings = {
   coachName: string;
   email: string;
+  phone?: string; // the coach's own number, optional (Nov 2026); settings saved before it have none
   lessonLength: number;
   reminders: boolean;
   sharedNotes: boolean;
@@ -422,9 +423,51 @@ export function phoneProblem(phone: string): string | null {
   return null;
 }
 
+/** The coach profile fields in Settings that the "Save coach info" button saves together. */
+export type CoachProfile = Pick<Settings, "coachName" | "email" | "phone" | "lessonLength">;
+
+export function coachProfileOf(settings: Settings): CoachProfile {
+  return { coachName: settings.coachName, email: settings.email, phone: settings.phone ?? "", lessonLength: settings.lessonLength };
+}
+
+/**
+ * True when the coach changed something in the profile card since the last save, so the Save button
+ * only lights up when there's something to save. Spaces at the ends don't count as a change.
+ */
+export function coachProfileHasChanges(saved: CoachProfile, draft: CoachProfile): boolean {
+  return (
+    saved.coachName.trim() !== draft.coachName.trim() ||
+    saved.email.trim() !== draft.email.trim() ||
+    (saved.phone ?? "").trim() !== (draft.phone ?? "").trim() ||
+    saved.lessonLength !== draft.lessonLength
+  );
+}
+
+/**
+ * Why the coach profile can't be saved yet, or null if it can. Every field is optional, but the
+ * phone number follows the same rule as a student's (phoneProblem) and an email needs an "@".
+ */
+export function coachProfileProblem(profile: CoachProfile): string | null {
+  const email = profile.email.trim();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "That email doesn't look right (like name@example.com).";
+  const phone = phoneProblem(profile.phone ?? "");
+  if (phone) return `Phone number: ${phone}`;
+  return null;
+}
+
 /** The link that starts a call on the phone ("tel:+15550102030"). */
 export function phoneLink(phone: string) {
   return `tel:${phone.replace(/[^0-9+]/g, "")}`;
+}
+
+/**
+ * The link that opens the Messages app with a text ready to send, addressed to `phone` when there is one
+ * (otherwise the coach picks a contact). iPhone wants "sms:5550102030&body=..." and Android
+ * "sms:5550102030?body=...", so the platform decides which.
+ */
+export function smsLink(phone: string | undefined, message: string, platform: "ios" | "android"): string {
+  const to = phone ? phone.replace(/[^0-9+]/g, "") : "";
+  return `sms:${to}${platform === "ios" ? "&" : "?"}body=${encodeURIComponent(message)}`;
 }
 
 /** The track a new discipline gets: Adult for the adult disciplines, Championship for the rest. */
@@ -846,6 +889,7 @@ export const SAMPLE_NOTES: Note[] = [
 export const SAMPLE_SETTINGS: Settings = {
   coachName: "Mia Carter",
   email: "mia@example.com",
+  phone: "+1 (555) 010-9000",
   lessonLength: 45,
   reminders: true,
   sharedNotes: true,
@@ -1055,6 +1099,31 @@ export function notesForStudent(notes: Note[], studentId: string): Note[] {
   return notes.filter((note) => note.studentId === studentId).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/**
+ * The text a coach shares with a student from their profile: a greeting with the student's first name
+ * (the app only keeps first names or initials anyway), each picked note oldest first, and the coach's
+ * sign-off "via SkatePod". The coach picks who gets it in the phone's share sheet; the app sends nothing itself.
+ */
+export function shareNotesMessage(picked: Note[], studentName: string, coachName: string): string {
+  const firstName = studentName.trim().split(/\s+/)[0] || "there";
+  const intro = picked.length === 1 ? `Hi ${firstName}, here are your notes from our lesson:` : `Hi ${firstName}, here are your notes from our last ${picked.length} lessons:`;
+  const body = [...picked]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((note) => {
+      const date = new Date(note.date);
+      const when = `${date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${formatTime(date.getHours() * 60 + date.getMinutes())}`;
+      const lines = [when, `${note.lessonType} · ${note.duration}`];
+      if (isEmptyNote(note)) lines.push("No notes for this lesson.");
+      if (note.focus.trim()) lines.push(`Focus: ${note.focus.trim()}`);
+      if (note.observations.trim()) lines.push(note.observations.trim());
+      if (note.skills.length) lines.push(`Skills: ${note.skills.join(", ")}`);
+      if (note.nextSteps.trim()) lines.push(`Next: ${note.nextSteps.trim()}`);
+      return lines.join("\n");
+    });
+  const signOff = coachName.trim() ? `— ${coachName.trim()}, via SkatePod` : "— via SkatePod";
+  return [intro, ...body, signOff].join("\n\n");
+}
+
 export function formatShortDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -1259,6 +1328,40 @@ export function endDateAfterLessons(firstDate: string, count: number) {
 export function countWeeklyLessons(firstDate: string, endDate: string) {
   const days = Math.round((fromDateKey(endDate).getTime() - fromDateKey(firstDate).getTime()) / 86_400_000);
   return days < 0 ? 0 : Math.floor(days / 7) + 1;
+}
+
+/** "2026-11-12" → "Thu, Nov 12" */
+export function formatDateKey(key: string) {
+  return fromDateKey(key).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/** The lesson lengths the lesson editor offers as buttons (same as the Settings default lesson length). */
+export const LESSON_DURATIONS = [30, 45, 60];
+
+/**
+ * The length buttons for one lesson: 30, 45 and 60 minutes, plus the lesson's own length when it's
+ * something else (a lesson stretched to 75 minutes on the calendar keeps a "75 min" button).
+ */
+export function durationChoices(current: number) {
+  return LESSON_DURATIONS.includes(current) || !(current > 0) ? LESSON_DURATIONS : [...LESSON_DURATIONS, current].sort((a, b) => a - b);
+}
+
+/** How many lessons "After X lessons" allows: at least 1, at most a year of weekly lessons. */
+export const MIN_LESSON_COUNT = 1;
+export const MAX_LESSON_COUNT = 52;
+
+/**
+ * The sentence above the lesson editor's buttons that says what will be booked, e.g.
+ * "Every Tuesday at 8:00 AM, starting Tue, Nov 10." or "One lesson on Tue, Nov 10 at 8:00 AM."
+ * `endDate` is the last lesson's day when a repeating lesson stops (none = no end date).
+ */
+export function lessonSummary({ isRepeating, date, start, endDate }: { isRepeating: boolean; date: string; start: number; endDate?: string }) {
+  if (!isRepeating) return `One lesson on ${formatDateKey(date)} at ${formatTime(start)}.`;
+  const weekly = `Every ${FULL_WEEKDAYS[weekdayOfKey(date)]} at ${formatTime(start)}, starting ${formatDateKey(date)}`;
+  if (!endDate) return `${weekly}.`;
+  const count = countWeeklyLessons(date, endDate);
+  if (count === 0) return "No lessons fall between these dates. Move the end date later.";
+  return `${weekly} until ${formatDateKey(endDate)} (${count} ${count === 1 ? "lesson" : "lessons"}).`;
 }
 
 /**

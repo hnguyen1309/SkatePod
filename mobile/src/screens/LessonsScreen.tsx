@@ -2,17 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, Share, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { NoteEditor, blankNote } from "../components/NoteEditor";
-import { Button, Card, Empty, Heading, PickerField, Screen, SearchBar, Segmented } from "../components/ui";
+import { Button, Card, Empty, Heading, PickerField, Screen, SearchBar, Segmented, SelectionFooter, TickCircle } from "../components/ui";
 import {
   HISTORY_RANGES,
   formatTime,
   isEmptyNote,
   matchesHistoryFilter,
+  shareNotesMessage,
   type HistoryRange,
   type Note,
 } from "../data";
 import type { ScreenProps, Tab } from "../navigation";
 import { useStore } from "../store";
+import { openTextMessage, useCanText } from "../texting";
 import { colors } from "../theme";
 
 export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps) {
@@ -20,8 +22,8 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
   const [search, setSearch] = useState("");
   const [range, setRange] = useState<HistoryRange>("Last 30 days");
   const [level, setLevel] = useState<string | null>(null);
-  // Select mode: tick several lessons to share or delete them together.
-  const [selecting, setSelecting] = useState(false);
+  // Each lesson row has an empty tick circle. Tick several to share or delete them together; once one is
+  // ticked, Select all and the Share / Text / Delete buttons show up above the list.
   const [selected, setSelected] = useState<string[]>([]);
   const [studentFilter, setStudentFilter] = useState<string | null>(null);
   const [editing, setEditing] = useState<Note | null>(null);
@@ -72,16 +74,32 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
       .filter((note) => matchesHistoryFilter(note, studentById(note.studentId), { name: search, range, level }, now));
   }, [notes, studentFilter, search, range, level, studentById]);
 
+  // Only rows still on screen count: changing a filter can hide a ticked lesson.
+  const tickedCount = visible.filter((note) => selected.includes(note.id)).length;
+  const selecting = tickedCount > 0;
+
   function toggle(id: string) {
     setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   }
   function stopSelecting() {
-    setSelecting(false);
     setSelected([]);
   }
 
-  function shareSelected() {
+  const canText = useCanText();
+
+  // The ticked notes, plus their student when they all belong to one (then the message greets them
+  // and Text is addressed to their phone number, if they have one).
+  function pickedNotes() {
     const picked = visible.filter((note) => selected.includes(note.id));
+    const studentIds = new Set(picked.map((note) => note.studentId));
+    const student = studentIds.size === 1 ? studentById(picked[0].studentId) : undefined;
+    return { picked, student };
+  }
+
+  // One student: the same greeting message as on their profile (shareNotesMessage). Several students:
+  // each note says whose it is, and there's no greeting.
+  function messageFor(picked: Note[], student: ReturnType<typeof studentById>) {
+    if (student) return shareNotesMessage(picked, student.name, settings.coachName);
     const message = picked
       .map((note) =>
         [
@@ -91,17 +109,30 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
         ].join("\n"),
       )
       .join("\n\n");
-    Share.share({ message: `${message}\n\n— ${settings.coachName}, via SkatePod` }).catch(() => {});
+    return `${message}\n\n— ${settings.coachName}, via SkatePod`;
+  }
+
+  function shareSelected() {
+    const { picked, student } = pickedNotes();
+    Share.share({ message: messageFor(picked, student) }).catch(() => {});
+  }
+
+  async function textSelected() {
+    const { picked, student } = pickedNotes();
+    if (!picked.length) return;
+    if (await openTextMessage(student?.phone, messageFor(picked, student))) stopSelecting();
   }
 
   function deleteSelected() {
-    Alert.alert(`Delete ${selected.length} ${selected.length === 1 ? "lesson" : "lessons"}?`, "They're removed from the training history, with their notes. This can't be undone.", [
+    // Only the ticked lessons still on screen, so a filter change never deletes something the coach can't see.
+    const ids = visible.filter((note) => selected.includes(note.id)).map((note) => note.id);
+    Alert.alert(`Delete ${ids.length} ${ids.length === 1 ? "lesson" : "lessons"}?`, "They're removed from the training history, with their notes. This can't be undone.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Delete",
         style: "destructive",
         onPress: async () => {
-          await deleteNotes(selected); // tells the coach if some couldn't be deleted
+          await deleteNotes(ids); // tells the coach if some couldn't be deleted
           stopSelecting();
         },
       },
@@ -127,7 +158,9 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
     ]);
   }
 
+  // The list scrolls; while lessons are ticked, the selection bar sits under it, pinned above the tabs.
   return (
+    <View style={{ flex: 1 }}>
     <Screen>
       <Heading
         description="Every lesson from your calendar lands here once it starts, with or without notes. Tap one to add or read its notes."
@@ -158,69 +191,34 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
         />
       ) : null}
 
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-        <Text style={{ fontSize: 13, fontWeight: "700", color: colors.subtle }}>
-          {selecting ? `${selected.length} selected` : `${visible.length} ${visible.length === 1 ? "lesson" : "lessons"}`}
-        </Text>
-        <Button
-          label={selecting ? "Cancel" : "Select"}
-          onPress={() => (selecting ? stopSelecting() : setSelecting(true))}
-          style={{ minHeight: 32, paddingVertical: 6, paddingHorizontal: 12 }}
-          variant="secondary"
-        />
-      </View>
-      {!selecting ? (
-        <Button icon="plus" label="Add a past lesson" onPress={() => startNew(studentFilter ?? undefined)} style={{ marginBottom: 12 }} variant="secondary" />
-      ) : null}
-      {selecting ? (
-        <View style={{ flexDirection: "row", gap: 10, marginBottom: 12 }}>
-          <Button
-            label={selected.length === visible.length ? "Clear all" : "Select all"}
-            onPress={() => setSelected(selected.length === visible.length ? [] : visible.map((note) => note.id))}
-            style={{ flex: 1 }}
-            variant="secondary"
-          />
-          <Button disabled={!selected.length} icon="share" label="Share" onPress={shareSelected} style={{ flex: 1 }} variant="secondary" />
-          <Button disabled={!selected.length} label="Delete" onPress={deleteSelected} style={{ flex: 1 }} variant="danger" />
-        </View>
-      ) : null}
+      <Text style={{ fontSize: 13, fontWeight: "700", color: colors.subtle, marginBottom: 10 }}>
+        {visible.length} {visible.length === 1 ? "lesson" : "lessons"}
+      </Text>
+      <Button icon="plus" label="Add a past lesson" onPress={() => startNew(studentFilter ?? undefined)} style={{ marginBottom: 12 }} variant="secondary" />
 
       {visible.length ? (
         <Card style={{ padding: 0 }}>
           {visible.map((note, index) => {
             const empty = isEmptyNote(note);
             const ticked = selected.includes(note.id);
+            const name = studentById(note.studentId)?.name ?? "Removed student";
             return (
-              <Pressable
-                accessibilityRole={selecting ? "checkbox" : "button"}
-                accessibilityState={selecting ? { checked: ticked } : undefined}
+              // The circle ticks the row. Tapping the rest opens the note, or ticks it too once something is ticked.
+              <View
                 key={note.id}
-                onPress={() => (selecting ? toggle(note.id) : setEditing(note))}
-                style={({ pressed }) => [
-                  { flexDirection: "row", gap: 12, padding: 14, borderTopWidth: index ? 1 : 0, borderTopColor: colors.borderSoft },
-                  (pressed || ticked) && { backgroundColor: "#f1f7f7" },
+                style={[
+                  { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14, borderTopWidth: index ? 1 : 0, borderTopColor: colors.borderSoft },
+                  ticked && { backgroundColor: "#f1f7f7" },
                 ]}
               >
-                {selecting ? (
-                  <View
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 11,
-                      borderWidth: 2,
-                      borderColor: ticked ? colors.teal : colors.border,
-                      backgroundColor: ticked ? colors.teal : "transparent",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginTop: 1,
-                    }}
-                  >
-                    {ticked ? <Icon color={colors.white} name="check" size={13} /> : null}
-                  </View>
-                ) : null}
-                <View style={{ flex: 1 }}>
+                <TickCircle label={`Select ${name}, ${whenOf(note.date)}`} onPress={() => toggle(note.id)} ticked={ticked} />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => (selecting ? toggle(note.id) : setEditing(note))}
+                  style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.7 }]}
+                >
                   <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{studentById(note.studentId)?.name ?? "Removed student"}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>{name}</Text>
                     <Text style={{ fontSize: 11, fontWeight: "600", color: colors.muted }}>{whenOf(note.date)}</Text>
                   </View>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#596976", marginTop: 4 }}>
@@ -232,8 +230,8 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
                   >
                     {empty ? "No notes yet" : note.observations || note.focus || note.nextSteps || note.skills.join(", ")}
                   </Text>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
             );
           })}
         </Card>
@@ -257,6 +255,22 @@ export function LessonsScreen({ intent, onIntentHandled, navigate }: ScreenProps
         />
       ) : null}
     </Screen>
+    {selecting ? (
+      // Select all / Clear, then Share, Text (when this phone can text) and Delete. Text is addressed to the
+      // student's number when every ticked note is theirs and they have one.
+      <SelectionFooter
+        count={tickedCount}
+        framed
+        onClear={stopSelecting}
+        onSelectAll={() => setSelected(visible.map((note) => note.id))}
+        total={visible.length}
+      >
+        <Button icon="share" label="Share" onPress={shareSelected} style={{ flex: 1 }} variant="secondary" />
+        {canText ? <Button icon="phone" label="Text" onPress={textSelected} style={{ flex: 1 }} /> : null}
+        <Button label="Delete" onPress={deleteSelected} style={{ flex: 1 }} variant="danger" />
+      </SelectionFooter>
+    ) : null}
+    </View>
   );
 }
 

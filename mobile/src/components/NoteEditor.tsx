@@ -1,11 +1,11 @@
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useState, type MutableRefObject } from "react";
 import { Alert, Pressable, Share, Text, TextInput, View } from "react-native";
-import { DURATIONS, LESSON_TYPES, OVERALL, formatShortDate, newId, noteHasChanges, type Note, type Settings } from "../data";
+import { DURATIONS, OVERALL, formatShortDate, newId, noteHasChanges, type Note, type Settings } from "../data";
 import { useStore } from "../store";
 import { colors, radius } from "../theme";
 import { Icon } from "./Icon";
-import { Button, Field, Label, PickerField, Sheet, SheetPage, ToggleRow, styles } from "./ui";
+import { Button, Dropdown, Field, Label, LessonTypePicker, PickerField, Sheet, SheetPage, ToggleRow, styles } from "./ui";
 
 /** A new, empty note. From the calendar, `lesson` fills in that lesson's date, type and length. */
 export function blankNote(
@@ -173,7 +173,7 @@ export function NoteEditor({
       ) : (
         <>
           {studentIds.length ? (
-            <PickerField
+            <Dropdown
               label="Student"
               onChange={(studentId: string) => set({ studentId })}
               options={studentIds}
@@ -181,12 +181,7 @@ export function NoteEditor({
               value={studentIds.includes(draft.studentId) ? draft.studentId : studentIds[0]}
             />
           ) : null}
-          <PickerField
-            label="Lesson type"
-            onChange={(lessonType: string) => set({ lessonType, title: `${lessonType} lesson` })}
-            options={LESSON_TYPES}
-            value={draft.lessonType}
-          />
+          <LessonTypePicker onChange={(lessonType) => set({ lessonType, title: `${lessonType} lesson` })} value={draft.lessonType} />
           <PickerField
             label="Duration"
             onChange={(duration: string) => set({ duration })}

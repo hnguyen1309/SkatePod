@@ -12,6 +12,9 @@ tags: [regression]
 - tapOn: "Add a past lesson"
 - assertVisible: "Add past lesson"
 - assertVisible: "When"
+- tapOn:
+    text: "Student"
+    index: 1                # the Student dropdown (index 0 is its label)
 - tapOn: "Sofia Chen"
 # Fields below the fold sit under the footer buttons, so scroll before tapping.
 - scrollUntilVisible:
@@ -65,11 +68,12 @@ tags: [regression]
 - assertVisible: "\\d+ lessons?|No lessons match these filters\\."
 - tapOn: "All"
 
-# Select mode: pick the new entry and delete it.
-- tapOn: "Select"
-- assertVisible: "0 selected"
-- tapOn: ".*UITEST spin entries.*"
-- assertVisible: "1 selected"
+# Tick the new entry's circle (Select all appears) and delete it.
+- tapOn:
+    text: "Select .*"
+    leftOf: ".*UITEST spin entries.*"
+- assertVisible: "Select all"
+- assertVisible: "1 of \\d+ selected"
 - tapOn:
     text: "Delete"
     index: 0

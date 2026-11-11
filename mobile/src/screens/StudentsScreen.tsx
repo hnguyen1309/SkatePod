@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, Share, StyleSheet, Text, View } from "react-native";
 import { Icon } from "../components/Icon";
 import { NoteEditor, blankNote } from "../components/NoteEditor";
 import {
@@ -17,7 +17,9 @@ import {
   Label,
   Screen,
   SearchBar,
+  SelectionFooter,
   Sheet,
+  TickCircle,
 } from "../components/ui";
 import {
   DISCIPLINES,
@@ -36,6 +38,7 @@ import {
   phoneLink,
   phoneProblem,
   placeFor,
+  shareNotesMessage,
   sortDisciplines,
   type DisciplineCategory,
   type DisciplineId,
@@ -45,6 +48,7 @@ import {
 } from "../data";
 import type { ScreenProps } from "../navigation";
 import { useStore } from "../store";
+import { openTextMessage, useCanText } from "../texting";
 import { categoryColors, colors, radius } from "../theme";
 
 type CategoryFilter = "ALL" | DisciplineCategory;
@@ -62,6 +66,16 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
   const [openNote, setOpenNote] = useState<{ note: Note; isNew: boolean } | null>(null);
   // The open note editor's "close without saving" (asks first if something changed), for when the whole sheet is swiped down.
   const closeNoteRef = useRef<(() => void) | null>(null);
+  // The profile's note cards each have an empty tick circle; tick some, then share them with the student.
+  // Once one is ticked, Select all, Share and Text show up above the cards.
+  const [pickedNotes, setPickedNotes] = useState<string[]>([]);
+
+  const canText = useCanText();
+
+  // A different student (or none) starts with nothing ticked.
+  useEffect(() => {
+    setPickedNotes([]);
+  }, [detailId]);
 
   useEffect(() => {
     if (!intent) return;
@@ -88,6 +102,33 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
     }
     setOpenNote(null);
     setDetailId(null);
+  }
+
+  function togglePicked(id: string) {
+    setPickedNotes((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function stopSelectingNotes() {
+    setPickedNotes([]);
+  }
+
+  // Opens the phone's share sheet (Messages, Mail, WhatsApp...) with a greeting, the picked notes and
+  // "via SkatePod". The coach chooses who gets it there; the app doesn't send anything itself.
+  function sharePickedNotes(studentName: string, studentNotes: Note[]) {
+    const picked = studentNotes.filter((note) => pickedNotes.includes(note.id));
+    if (!picked.length) return;
+    Share.share({ message: shareNotesMessage(picked, studentName, settings.coachName) })
+      .then((result) => {
+        if (result.action === Share.sharedAction) stopSelectingNotes();
+      })
+      .catch(() => {});
+  }
+
+  // Texts the picked notes, addressed to the student's number when they have one (see texting.ts).
+  async function textPickedNotes(student: Student, studentNotes: Note[]) {
+    const picked = studentNotes.filter((note) => pickedNotes.includes(note.id));
+    if (!picked.length) return;
+    if (await openTextMessage(student.phone, shareNotesMessage(picked, student.name, settings.coachName))) stopSelectingNotes();
   }
 
   async function saveOpenNote(note: Note) {
@@ -190,6 +231,27 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
       <Button icon="plus" label="Add student" onPress={() => setEditor({ mode: "add" })} />
 
       <Sheet
+        // While note cards are ticked: Select all / Clear, Share and (when this phone can text) Text, pinned
+        // to the bottom of the sheet so they stay put while the notes scroll.
+        footer={
+          detail && pickedNotes.length ? (
+            <SelectionFooter
+              count={pickedNotes.length}
+              onClear={stopSelectingNotes}
+              onSelectAll={() => setPickedNotes(detailNotes.map((note) => note.id))}
+              total={detailNotes.length}
+            >
+              <Button
+                icon="share"
+                label="Share"
+                onPress={() => sharePickedNotes(detail.name, detailNotes)}
+                style={{ flex: 1 }}
+                variant={canText ? "secondary" : "primary"}
+              />
+              {canText ? <Button icon="phone" label="Text" onPress={() => textPickedNotes(detail, detailNotes)} style={{ flex: 1 }} /> : null}
+            </SelectionFooter>
+          ) : undefined
+        }
         onClose={closeProfile}
         pushed={
           openNote ? (
@@ -207,11 +269,14 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
         }
         title={detail?.name ?? "Student"}
         // The navy card stays put at the top while the snapshot and notes scroll under it.
+        // No title row: the navy card already shows the name, so it sits at the very top with the pencil
+        // and the X (Close) in its corner. Swiping the sheet down closes it too.
+        hideHeader
         top={
           detail ? (
             <View style={{ backgroundColor: colors.navy, borderRadius: radius.lg, padding: 18 }}>
-              {/* The pencil opens the editor. Its label stays "Edit profile" so screen readers and the Maestro flows find it. */}
-              <View style={{ position: "absolute", top: 14, right: 14 }}>
+              {/* The pencil opens the editor. Labels stay "Edit profile" and "Close" so screen readers and the Maestro flows find them. */}
+              <View style={{ position: "absolute", top: 14, right: 14, flexDirection: "row", gap: 8 }}>
                 <IconButton
                   background="rgba(255,255,255,0.14)"
                   color={colors.white}
@@ -220,6 +285,7 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
                   onPress={() => closeDetailThen(() => setEditor({ mode: "edit", student: detail }))}
                   size={36}
                 />
+                <IconButton background="rgba(255,255,255,0.14)" color={colors.white} icon="close" label="Close" onPress={closeProfile} size={36} />
               </View>
               <Avatar initials={initialsOf(detail.name)} size={48} tone={detail.tone} />
               <Text style={{ color: colors.white, fontSize: 20, fontWeight: "700", marginTop: 12 }}>{detail.name}</Text>
@@ -253,15 +319,40 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
               value={programs.filter((program) => program.studentId === detail.id).map((program) => program.name).join(", ") || "Not started"}
             />
             <View style={{ height: 1, backgroundColor: colors.borderSoft, marginVertical: 16 }} />
-            <Label>Next lesson</Label>
-            <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 18 }}>
+            {/* Header row like Recent notes: "Go to Calendar" shows the next lesson's week with its preview open
+                (or just the Calendar when nothing is scheduled). */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Label>Next lesson</Label>
+              <Pressable
+                accessibilityRole="link"
+                hitSlop={8}
+                onPress={() =>
+                  closeDetailThen(() =>
+                    navigate("Calendar", detailNext ? { kind: "showLesson", lessonId: detailNext.lesson.id } : undefined),
+                  )
+                }
+                style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 2, marginBottom: 8 }, pressed && { opacity: 0.6 }]}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "700", color: colors.teal }}>Go to Calendar</Text>
+                <Icon color={colors.teal} name="chevron" size={14} />
+              </Pressable>
+            </View>
+            <View style={{ backgroundColor: "#f3f7f8", borderRadius: radius.md, padding: 12, marginBottom: 10 }}>
               <Text style={{ fontSize: 14, fontWeight: "700", color: "#355e64" }}>{detailNext?.label ?? "Not scheduled"}</Text>
               <Text style={{ fontSize: 12, color: "#728387", marginTop: 3 }}>
                 {detailNext
                   ? [detailNext.lesson.type, `${detailNext.lesson.duration} minutes`, placeFor(detailNext.lesson, availability)].filter(Boolean).join(" · ")
-                  : "Add a lesson on the Calendar tab"}
+                  : "No lessons on the calendar yet"}
               </Text>
             </View>
+            {/* Opens the Calendar's lesson editor with this student already picked. */}
+            <Button
+              icon="plus"
+              label="Schedule a lesson"
+              onPress={() => closeDetailThen(() => navigate("Calendar", { kind: "add", studentId: detail.id }))}
+              style={{ marginBottom: 18 }}
+              variant="secondary"
+            />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <Label>Recent notes</Label>
               <Pressable
@@ -276,33 +367,41 @@ export function StudentsScreen({ intent, onIntentHandled, navigate }: ScreenProp
             </View>
             {detailNotes.length ? (
               // This student's notes, newest first, as full-width cards in a column (the sheet scrolls them).
-              // Tapping one slides it in over the profile.
+              // The circle ticks the card. Tapping the rest of the card opens the note (slides it in over the
+              // profile), or ticks it too once something is already ticked.
               <View style={{ gap: 10, marginBottom: 12 }}>
                 {detailNotes.map((note) => {
                   const empty = isEmptyNote(note);
+                  const ticked = pickedNotes.includes(note.id);
+                  const title = `${note.lessonType} · ${note.duration}`;
                   return (
-                    <Pressable
-                      accessibilityRole="button"
+                    <View
                       key={note.id}
-                      onPress={() => setOpenNote({ note, isNew: false })}
-                      style={({ pressed }) => [
-                        { backgroundColor: colors.white, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: 14 },
-                        pressed && { opacity: 0.7 },
+                      style={[
+                        { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.borderSoft, borderRadius: radius.md, padding: 14 },
+                        ticked && { borderColor: colors.teal, backgroundColor: "#f1f7f7" },
                       ]}
                     >
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                        <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "700", color: colors.text }}>
-                          {note.lessonType} · {note.duration}
-                        </Text>
-                        <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{formatShortDate(note.date)}</Text>
-                      </View>
-                      <Text
-                        numberOfLines={2}
-                        style={{ fontSize: 13, lineHeight: 18, color: colors.subtle, marginTop: 4, fontStyle: empty ? "italic" : "normal" }}
+                      <TickCircle label={`Select ${title}, ${formatShortDate(note.date)}`} onPress={() => togglePicked(note.id)} ticked={ticked} />
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => (pickedNotes.length ? togglePicked(note.id) : setOpenNote({ note, isNew: false }))}
+                        style={({ pressed }) => [{ flex: 1 }, pressed && { opacity: 0.7 }]}
                       >
-                        {empty ? "No notes yet" : note.observations || note.focus || note.nextSteps || note.skills.join(", ")}
-                      </Text>
-                    </Pressable>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
+                          <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "700", color: colors.text }}>
+                            {title}
+                          </Text>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: colors.muted }}>{formatShortDate(note.date)}</Text>
+                        </View>
+                        <Text
+                          numberOfLines={2}
+                          style={{ fontSize: 13, lineHeight: 18, color: colors.subtle, marginTop: 4, fontStyle: empty ? "italic" : "normal" }}
+                        >
+                          {empty ? "No notes yet" : note.observations || note.focus || note.nextSteps || note.skills.join(", ")}
+                        </Text>
+                      </Pressable>
+                    </View>
                   );
                 })}
               </View>
